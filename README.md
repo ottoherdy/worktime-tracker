@@ -7,9 +7,9 @@ En komplett **Home Assistant custom integration** för automatisk arbetstidsspå
 
 ## Vad du får
 
-- **Automatisk tidsspårning** via en zon (t.ex. `zone.otto_work`)
-- **Lunch-push kl 13:00** med Ja/Nej-knappar — svaret påverkar planerad sluttid
-- **Daglig logg till Google Sheets** via webhook (Apps Script)
+- **Automatisk tidsspårning** via en zon
+- **Lunch-push** med Ja/Nej-knappar — svaret påverkar planerad sluttid
+- **Daglig logg till Google Sheets** via den inbyggda HA-integrationen
 - **Dashboard** med ApexCharts-jämförelse mellan denna och förra veckan
 - **Scriptable-widget** för iOS som visar tid kvar / övertid
 
@@ -20,18 +20,13 @@ worktime-tracker/
 ├── custom_components/worktime_tracker/   ← själva integrationen (HACS installerar denna)
 ├── dashboards/dashboard.yaml             ← Lovelace-vy
 ├── scriptable/worktime_widget.js         ← iOS-widget
-├── apps_script/google_apps_script.gs     ← Sheets-webhook
 ├── hacs.json                             ← HACS-metadata
 └── .github/workflows/validate.yml        ← hassfest + HACS-validering
 ```
 
 ## Installation
 
-### Steg 1 — Pusha repot till GitHub
-
-Kör de kommandona som finns under [SETUP.md](SETUP.md), eller om du redan har repot uppe: hoppa direkt till steg 2.
-
-### Steg 2 — Installera integrationen via HACS
+### Steg 1 — Installera via HACS
 
 1. Öppna HACS i Home Assistant
 2. **Integrations** → tre prickar uppe till höger → **Custom repositories**
@@ -39,37 +34,39 @@ Kör de kommandona som finns under [SETUP.md](SETUP.md), eller om du redan har r
 4. Sök upp **Worktime Tracker** i listan → **Download**
 5. Starta om Home Assistant
 
-### Steg 3 — Konfigurera
+### Steg 2 — Konfigurera
 
 `Settings → Devices & Services → + Add Integration → "Worktime Tracker"`
 
 | Fält | Exempel | Förklaring |
 |---|---|---|
-| Person eller device tracker | `person.otto` | Den som spåras |
-| Arbetszon | `zone.otto_work` | När personen är i zonen räknas det som "på jobbet" |
-| Notify-tjänst | `mobile_app_otto_phone` | Utan `notify.`-prefix. Lämna tomt om du inte vill ha lunch-notisen |
+| Person eller device tracker | `person.your_name` | Den som spåras |
+| Arbetszon | `zone.work` | När personen är i zonen räknas det som "på jobbet" |
+| Notify-tjänst | `mobile_app_your_phone` | Utan `notify.`-prefix. Lämna tomt om du inte vill ha lunch-notisen |
 | Tid för lunch-check | `13:00` | När push-notisen om lunch skickas |
 | Arbetsdagens längd | `8.5` | Inkl. lunch (8h netto + 0.5h lunch) |
 | Lunchpaus | `0.5` | Dras av vid "Nej" på lunchfrågan |
 | Veckomål | `40` | För övertids-beräkning |
-| Sheets webhook URL | (se nedan) | Lämna tomt om du inte använder Sheets |
 | Anta lunch om inget svar | På | Vid avresa utan svar: räkna med lunch |
 
 Allt går att ändra senare via **Configure** på integrationen.
 
-### Steg 4 — Lägg in dashboarden
+### Steg 3 — Lägg in dashboarden
 
 Öppna `dashboards/dashboard.yaml` och klistra in i en ny eller befintlig Lovelace-dashboard. Kräver två HACS-frontendkort: **ApexCharts Card** och **Mushroom**.
 
-### Steg 5 — Google Sheets (valfritt)
+### Steg 4 — Google Sheets (valfritt)
 
-1. Skapa ett tomt Google Sheet
-2. `Extensions → Apps Script`
-3. Klistra in `apps_script/google_apps_script.gs`
-4. **Deploy → New deployment → Web app** (Execute as: Me, Who has access: Anyone)
-5. Kopiera URL:en → **Configure** integrationen → klistra in i Sheets-fältet
+Kräver att du har installerat den officiella [Google Sheets-integrationen](https://www.home-assistant.io/integrations/google_sheets/) i Home Assistant.
 
-### Steg 6 — Scriptable iOS-widget (valfritt)
+1. Installera **Google Sheets** via `Settings → Devices & Services → + Add Integration`
+2. Autentisera med ditt Google-konto
+3. Gå till **Configure** på Worktime Tracker-integrationen
+4. Ange **Config Entry ID** för Google Sheets-integrationen och ett **worksheet-namn**
+
+Integrationen lägger automatiskt till en rad med Datum, Ankomst, Planerad slut, Avresa, Lunch och Timmar när du lämnar jobbet.
+
+### Steg 5 — Scriptable iOS-widget (valfritt)
 
 1. Installera [Scriptable](https://apps.apple.com/se/app/scriptable/id1405459188)
 2. Skapa nytt script, klistra in `scriptable/worktime_widget.js`
@@ -107,17 +104,17 @@ Allt går att ändra senare via **Configure** på integrationen.
 ```
 Person går in i arbetszonen
         ↓
-arrival = now,  planned_end = arrival + 8.5h
+arrival = now,  planned_end = arrival + arbetsdagens längd
 
 Kl 13:00 om fortfarande på jobbet → push: [Ja, haft lunch] [Nej]
-   "Nej" → planned_end -= 30 min
+   "Nej" → planned_end -= lunchpaus
    Inget svar → "Anta lunch"-flaggan avgör vid avresa
 
 Person lämnar zonen
         ↓
 1) Beräkna jobbade timmar (minus lunch om "Ja")
 2) Spara i lokal HA-storage
-3) POST till Google Sheets webhook
+3) Lägg till rad i Google Sheets (om konfigurerat)
 4) Uppdatera alla sensorer
 ```
 
@@ -135,7 +132,7 @@ Person lämnar zonen
 | Symptom | Lösning |
 |---|---|
 | Lunch-notisen kommer inte | Kolla att `notify_service` är angiven utan `notify.`-prefix |
-| Sheets-rader hamnar inte in | Apps Script Executions → kolla loggar. Vanligaste felet: deployment är inte "Anyone"-åtkomlig |
+| Sheets-rader hamnar inte in | Kontrollera att Google Sheets-integrationen är korrekt installerad och att Config Entry ID stämmer |
 | ApexCharts är tom | Sensorn behöver minst en avslutad dag i historiken |
 
 ## Bidra
