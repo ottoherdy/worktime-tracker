@@ -148,12 +148,9 @@ async function buildWidget() {
     const overtimeMinutes = parseInt(timeRemaining) || 0;
     const overtimeText = formatTime(overtimeMinutes);
 
-    ctx.drawText(
-      overtimeText,
-      new Point(100, 90),
-      new Font("San Francisco", 18),
-      new Color(COLORS.overtime)
-    );
+    ctx.setFont(Font.boldSystemFont(18));
+    ctx.setTextColor(new Color(COLORS.overtime));
+    ctx.drawText(overtimeText, new Point(60, 88));
 
     const canvasImg = ctx.getImage();
     const imgStack = container.addImage(canvasImg);
@@ -198,12 +195,9 @@ async function buildWidget() {
     const remainingMinutes = parseInt(timeRemaining) || 0;
     const remainingText = formatTime(remainingMinutes);
 
-    ctx.drawText(
-      remainingText,
-      new Point(100, 85),
-      new Font("San Francisco", 20),
-      new Color(COLORS.text)
-    );
+    ctx.setFont(Font.boldSystemFont(18));
+    ctx.setTextColor(new Color("#F3F4F6"));
+    ctx.drawText(remainingText, new Point(55, 88));
 
     const canvasImg = ctx.getImage();
     const imgStack = container.addImage(canvasImg);

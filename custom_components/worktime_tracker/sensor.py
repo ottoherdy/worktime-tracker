@@ -123,12 +123,17 @@ class HoursWeekSensor(_BaseSensor):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        # Provide a per-day breakdown for current and previous ISO week –
-        # the dashboard ApexCharts card uses this directly.
+        this_week = _week_breakdown(self.coordinator, weeks_back=0)
+        last_week = _week_breakdown(self.coordinator, weeks_back=1)
+        recent = sorted(
+            [d for d in (last_week + this_week) if d["hours"] > 0],
+            key=lambda d: d["date"],
+        )[-5:]
         return {
             "weekly_target": self.coordinator.weekly_target,
-            "this_week": _week_breakdown(self.coordinator, weeks_back=0),
-            "last_week": _week_breakdown(self.coordinator, weeks_back=1),
+            "this_week": this_week,
+            "last_week": last_week,
+            "recent_days": recent,
         }
 
 
@@ -222,5 +227,6 @@ def _week_breakdown(coordinator: WorktimeCoordinator, weeks_back: int = 0) -> li
             )
             if not already_logged:
                 hours = coordinator.hours_worked_today()
-        days.append({"date": d_iso, "weekday": d.strftime("%a"), "hours": round(hours, 2)})
+        _WEEKDAYS_SV = ["Mån", "Tis", "Ons", "Tor", "Fre", "Lör", "Sön"]
+        days.append({"date": d_iso, "weekday": _WEEKDAYS_SV[d.weekday()], "hours": round(hours, 2)})
     return days

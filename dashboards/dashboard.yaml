@@ -66,13 +66,23 @@ views:
           - entity: sensor.worktime_tracker_overtime_week
             name: Övertid
 
+      # --- Senaste 5 dagarna ---
+      - type: markdown
+        title: Senaste dagarna
+        content: >
+          {% set days = state_attr('sensor.worktime_tracker_hours_week', 'recent_days') or [] %}
+          | Dag | Datum | Timmar |
+          |-----|-------|--------|
+          {% for d in days | reverse %}
+          | **{{ d.weekday }}** | {{ d.date }} | {{ d.hours }}h |
+          {% endfor %}
+
       # --- ApexCharts: denna vecka vs förra ---
       - type: custom:apexcharts-card
         header:
           show: true
           title: Denna vecka vs förra
           show_states: false
-        graph_span: 1d
         chart_type: bar
         apex_config:
           chart:
@@ -82,6 +92,7 @@ views:
               columnWidth: 60%
               borderRadius: 4
           xaxis:
+            type: category
             categories:
               - Mån
               - Tis
@@ -109,21 +120,21 @@ views:
             color: "#3B82F6"
             data_generator: |
               const days = entity.attributes.this_week || [];
-              return days.map((d, i) => [i, d.hours]);
+              return days.map(d => ({ x: d.weekday, y: d.hours }));
           - entity: sensor.worktime_tracker_hours_week
             name: Förra veckan
             type: column
             color: "#9CA3AF"
             data_generator: |
               const days = entity.attributes.last_week || [];
-              return days.map((d, i) => [i, d.hours]);
+              return days.map(d => ({ x: d.weekday, y: d.hours }));
           - entity: sensor.worktime_tracker_hours_week
             name: 8h-mål
             type: line
             color: "#F97316"
             stroke_width: 2
             data_generator: |
-              return [[0, 8], [1, 8], [2, 8], [3, 8], [4, 8]];
+              return [{x:'Mån',y:8},{x:'Tis',y:8},{x:'Ons',y:8},{x:'Tor',y:8},{x:'Fre',y:8}];
 
       # --- Snabbåtgärder ---
       - type: entities

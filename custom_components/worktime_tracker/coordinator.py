@@ -2,8 +2,15 @@
 from __future__ import annotations
 
 import logging
+import math
 from datetime import date, datetime, time, timedelta
 from typing import Any
+
+_WEEKDAYS_SV = ["Måndag", "Tisdag", "Onsdag", "Torsdag", "Fredag", "Lördag", "Söndag"]
+
+
+def _round_quarter(hours: float) -> float:
+    return math.ceil(hours * 4) / 4
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant, State, callback
@@ -553,13 +560,16 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             )
             return
 
+        hours = self.hours_worked_today()
         row = {
             "Datum": self.current_date.isoformat(),
+            "Veckodag": _WEEKDAYS_SV[self.current_date.weekday()],
             "Ankomst": self._format_time(self.arrival),
             "Planerad slut": self._format_time(self.planned_end),
             "Avresa": self._format_time(self.departure),
             "Lunch": self.lunch_status,
-            "Timmar": self.hours_worked_today(),
+            "Timmar": hours,
+            "Timmar (avrundat)": _round_quarter(hours),
         }
         try:
             await self.hass.services.async_call(
