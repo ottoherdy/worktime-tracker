@@ -1,72 +1,150 @@
-# Worktime Tracker dashboard
-# ----------------------------
-# Lägg till denna som en ny vy i Lovelace, eller importera hela filen som en
-# ny dashboard via UI:t (Settings → Dashboards → Add → New dashboard from scratch
-# → Take control → klistra in denna YAML).
-#
-# Beroenden:
-#   - HACS: ApexCharts Card  (https://github.com/RomRider/apexcharts-card)
-#   - HACS: mushroom         (frivilligt – för snyggare chip-rad högst upp)
-#
-# Om du inte har mushroom installerat, byt mushroom-* till glance/entities.
+title: electricity
+path: template
+type: sections
+max_columns: 2
+dense_section_placement: true
+theme: Graphite Auto
+background:
+  opacity: 68
+  alignment: top center
+  size: cover
+  repeat: no-repeat
+  attachment: scroll
+  image: /api/image/serve/1074a51e82fd0bd0ca22fc937c966a52/original
+header:
+  layout: center
+  badges_position: top
+badges:
+  - type: custom:mushroom-chips-card
+    chips:
+      - type: back
+    layout_options:
+      grid_columns: 4
+      grid_rows: 1
+    alignment: center
+  - type: custom:mushroom-template-badge
+    content: ""
+    icon: mdi:view-dashboard
+    color: ""
+    tap_action:
+      action: navigate
+      navigation_path: /lovelace
+  - type: custom:mushroom-template-badge
+    content: ""
+    icon: mdi:tablet-dashboard
+    color: ""
+    tap_action:
+      action: navigate
+      navigation_path: /dashboard-workroom
+  - type: custom:mushroom-template-badge
+    content: ""
+    icon: mdi:auto-mode
+    color: ""
+    entity: input_boolean.kioskmode
+    tap_action:
+      action: toggle
+cards: []
+icon: mdi:alpha-t-box
+sections:
 
-title: Worktime
-views:
-  - title: Idag
-    path: today
-    icon: mdi:briefcase-clock
+  # --- Status ---
+  - type: grid
     cards:
+      - type: heading
+        heading: Arbetstid
+        heading_style: title
+        icon: mdi:briefcase-clock
+      - type: custom:mushroom-entity-card
+        entity: sensor.worktime_tracker_status
+        name: Status
+        icon: mdi:account-clock
+        tap_action:
+          action: more-info
+        layout_options:
+          grid_columns: 1
+          grid_rows: 1
+      - type: custom:mushroom-entity-card
+        entity: binary_sensor.worktime_tracker_at_work
+        name: På jobbet
+        icon: mdi:office-building
+        layout_options:
+          grid_columns: 1
+          grid_rows: 1
+      - type: custom:mushroom-entity-card
+        entity: sensor.worktime_tracker_lunch_status
+        name: Lunch
+        icon: mdi:food
+        tap_action:
+          action: call-service
+          service: worktime_tracker.set_lunch
+          service_data:
+            had_lunch: true
+        layout_options:
+          grid_columns: 1
+          grid_rows: 1
+      - type: custom:mushroom-entity-card
+        entity: sensor.worktime_tracker_hours_today
+        name: Timmar idag
+        icon: mdi:clock-outline
+        layout_options:
+          grid_columns: 1
+          grid_rows: 1
 
-      # --- Översta raden: status-chips ---
-      - type: horizontal-stack
-        cards:
-          - type: custom:mushroom-entity-card
-            entity: sensor.worktime_tracker_status
-            name: Status
-            icon: mdi:account-clock
-            tap_action:
-              action: more-info
-          - type: custom:mushroom-entity-card
-            entity: sensor.worktime_tracker_lunch_status
-            name: Lunch
-            icon: mdi:food
-            tap_action:
-              action: call-service
-              service: worktime_tracker.set_lunch
-              service_data:
-                had_lunch: true
-          - type: custom:mushroom-entity-card
-            entity: binary_sensor.worktime_tracker_at_work
-            name: På jobbet
-            icon: mdi:office-building
+  # --- Dagens tider ---
+  - type: grid
+    cards:
+      - type: heading
+        heading: Dagens tider
+        heading_style: title
+      - type: custom:mushroom-entity-card
+        entity: sensor.worktime_tracker_arrival_time
+        name: Ankomst
+        icon: mdi:login
+        layout_options:
+          grid_columns: 2
+          grid_rows: 1
+      - type: custom:mushroom-entity-card
+        entity: sensor.worktime_tracker_planned_end_time
+        name: Planerad sluttid
+        icon: mdi:flag-checkered
+        layout_options:
+          grid_columns: 2
+          grid_rows: 1
+      - type: custom:mushroom-entity-card
+        entity: sensor.worktime_tracker_departure_time
+        name: Avresa
+        icon: mdi:logout
+        layout_options:
+          grid_columns: 2
+          grid_rows: 1
+      - type: custom:mushroom-entity-card
+        entity: sensor.worktime_tracker_time_remaining
+        name: Tid kvar (min)
+        icon: mdi:timer-sand
+        layout_options:
+          grid_columns: 2
+          grid_rows: 1
 
-      # --- Dagens nyckeltal ---
-      - type: entities
-        title: Dagens tider
-        show_header_toggle: false
-        entities:
-          - entity: sensor.worktime_tracker_arrival_time
-            name: Ankomst
-          - entity: sensor.worktime_tracker_planned_end_time
-            name: Planerad sluttid
-          - entity: sensor.worktime_tracker_departure_time
-            name: Avresa
-          - entity: sensor.worktime_tracker_hours_today
-            name: Timmar idag
-          - entity: sensor.worktime_tracker_time_remaining
-            name: Tid kvar (min)
-
-      # --- Veckans summering ---
-      - type: glance
-        title: Denna vecka
-        columns: 2
-        entities:
-          - entity: sensor.worktime_tracker_hours_week
-            name: Timmar
-          - entity: sensor.worktime_tracker_overtime_week
-            name: Övertid
-
-      # --- Senaste 5 dagarna ---
+  # --- Vecka + senaste dagarna ---
+  - type: grid
+    cards:
+      - type: heading
+        heading: Denna vecka
+        heading_style: title
+      - type: custom:mushroom-entity-card
+        entity: sensor.worktime_tracker_hours_week
+        name: Timmar
+        icon: mdi:calendar-week
+        layout_options:
+          grid_columns: 2
+          grid_rows: 1
+      - type: custom:mushroom-entity-card
+        entity: sensor.worktime_tracker_overtime_week
+        name: Övertid
+        icon: mdi:clock-plus-outline
+        layout_options:
+          grid_columns: 2
+          grid_rows: 1
       - type: markdown
         title: Senaste dagarna
         content: >
@@ -76,17 +154,23 @@ views:
           {% for d in days | reverse %}
           | **{{ d.weekday }}** | {{ d.date }} | {{ d.hours }}h |
           {% endfor %}
+        layout_options:
+          grid_columns: 4
+          grid_rows: 3
 
-      # --- ApexCharts: denna vecka vs förra ---
+  # --- Veckodiagram ---
+  - type: grid
+    cards:
+      - type: heading
+        heading: Denna vecka vs förra
+        heading_style: title
       - type: custom:apexcharts-card
         header:
-          show: true
-          title: Denna vecka vs förra
-          show_states: false
+          show: false
         chart_type: bar
         apex_config:
           chart:
-            height: 320
+            height: 280
           plotOptions:
             bar:
               columnWidth: 60%
@@ -100,8 +184,6 @@ views:
               - Tor
               - Fre
           yaxis:
-            title:
-              text: Timmar
             min: 0
             max: 12
           stroke:
@@ -135,43 +217,71 @@ views:
             stroke_width: 2
             data_generator: |
               return [{x:'Mån',y:8},{x:'Tis',y:8},{x:'Ons',y:8},{x:'Tor',y:8},{x:'Fre',y:8}];
+        layout_options:
+          grid_columns: 4
+          grid_rows: 4
 
-      # --- Snabbåtgärder ---
-      - type: entities
-        title: Snabbåtgärder
-        show_header_toggle: false
-        entities:
-          - type: call-service
-            name: Logga ankomst (manuellt)
-            icon: mdi:login
-            action_name: Kör
-            service: worktime_tracker.log_arrival
-          - type: call-service
-            name: Logga avresa (manuellt)
-            icon: mdi:logout
-            action_name: Kör
-            service: worktime_tracker.log_departure
-          - type: call-service
-            name: Markera lunch som tagen
-            icon: mdi:food
-            action_name: Ja
-            service: worktime_tracker.set_lunch
-            service_data:
-              had_lunch: true
-          - type: call-service
-            name: Markera lunch som ej tagen
-            icon: mdi:food-off
-            action_name: Nej
-            service: worktime_tracker.set_lunch
-            service_data:
-              had_lunch: false
-          - type: call-service
-            name: Skicka dagen till Sheets
-            icon: mdi:google-spreadsheet
-            action_name: Skicka
-            service: worktime_tracker.export_history
-          - type: call-service
-            name: Nollställ idag
-            icon: mdi:restart
-            action_name: Nollställ
-            service: worktime_tracker.reset_today
+  # --- Snabbåtgärder ---
+  - type: grid
+    cards:
+      - type: heading
+        heading: Snabbåtgärder
+        heading_style: title
+      - type: button
+        name: Logga ankomst
+        icon: mdi:login
+        tap_action:
+          action: call-service
+          service: worktime_tracker.log_arrival
+        layout_options:
+          grid_columns: 2
+          grid_rows: 1
+      - type: button
+        name: Logga avresa
+        icon: mdi:logout
+        tap_action:
+          action: call-service
+          service: worktime_tracker.log_departure
+        layout_options:
+          grid_columns: 2
+          grid_rows: 1
+      - type: button
+        name: Lunch — Ja
+        icon: mdi:food
+        tap_action:
+          action: call-service
+          service: worktime_tracker.set_lunch
+          service_data:
+            had_lunch: true
+        layout_options:
+          grid_columns: 2
+          grid_rows: 1
+      - type: button
+        name: Lunch — Nej
+        icon: mdi:food-off
+        tap_action:
+          action: call-service
+          service: worktime_tracker.set_lunch
+          service_data:
+            had_lunch: false
+        layout_options:
+          grid_columns: 2
+          grid_rows: 1
+      - type: button
+        name: Skicka till Sheets
+        icon: mdi:google-spreadsheet
+        tap_action:
+          action: call-service
+          service: worktime_tracker.export_history
+        layout_options:
+          grid_columns: 2
+          grid_rows: 1
+      - type: button
+        name: Nollställ idag
+        icon: mdi:restart
+        tap_action:
+          action: call-service
+          service: worktime_tracker.reset_today
+        layout_options:
+          grid_columns: 2
+          grid_rows: 1
