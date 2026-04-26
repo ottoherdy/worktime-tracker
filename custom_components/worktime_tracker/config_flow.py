@@ -16,13 +16,15 @@ from .const import (
     CONF_LUNCH_TIME,
     CONF_NOTIFY_SERVICE,
     CONF_PERSON_ENTITY,
-    CONF_SHEETS_WEBHOOK,
+    CONF_SHEETS_ENTRY,
+    CONF_SHEETS_WORKSHEET,
     CONF_WEEKLY_TARGET,
     CONF_WORK_ZONE,
     CONF_WORKDAY_HOURS,
     DEFAULT_AUTO_LUNCH_DEFAULT,
     DEFAULT_LUNCH_DEDUCTION,
     DEFAULT_LUNCH_TIME,
+    DEFAULT_SHEETS_WORKSHEET,
     DEFAULT_WEEKLY_TARGET,
     DEFAULT_WORKDAY_HOURS,
     DOMAIN,
@@ -79,9 +81,15 @@ def _build_user_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
                 )
             ),
             vol.Optional(
-                CONF_SHEETS_WEBHOOK, default=defaults.get(CONF_SHEETS_WEBHOOK, "")
+                CONF_SHEETS_ENTRY, default=defaults.get(CONF_SHEETS_ENTRY, "")
+            ): selector.ConfigEntrySelector(
+                selector.ConfigEntrySelectorConfig(integration="google_sheets")
+            ),
+            vol.Optional(
+                CONF_SHEETS_WORKSHEET,
+                default=defaults.get(CONF_SHEETS_WORKSHEET, DEFAULT_SHEETS_WORKSHEET),
             ): selector.TextSelector(
-                selector.TextSelectorConfig(type=selector.TextSelectorType.URL)
+                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
             ),
             vol.Required(
                 CONF_AUTO_LUNCH_DEFAULT,

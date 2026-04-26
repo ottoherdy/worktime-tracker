@@ -13,7 +13,8 @@ CONF_LUNCH_TIME = "lunch_time"
 CONF_WORKDAY_HOURS = "workday_hours"
 CONF_LUNCH_DEDUCTION = "lunch_deduction"
 CONF_WEEKLY_TARGET = "weekly_target"
-CONF_SHEETS_WEBHOOK = "sheets_webhook_url"
+CONF_SHEETS_ENTRY = "sheets_config_entry"
+CONF_SHEETS_WORKSHEET = "sheets_worksheet"
 CONF_AUTO_LUNCH_DEFAULT = "auto_lunch_default"
 
 # Defaults
@@ -22,6 +23,7 @@ DEFAULT_WORKDAY_HOURS = 8.5  # Includes lunch (so 8h net work)
 DEFAULT_LUNCH_DEDUCTION = 0.5  # 30 minutes
 DEFAULT_WEEKLY_TARGET = 40.0
 DEFAULT_AUTO_LUNCH_DEFAULT = True
+DEFAULT_SHEETS_WORKSHEET = "Worktime"
 
 # Storage
 STORAGE_KEY = f"{DOMAIN}.history"

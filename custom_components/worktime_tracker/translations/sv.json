@@ -12,7 +12,8 @@
           "workday_hours": "Arbetsdagens längd (timmar, inkl. lunch)",
           "lunch_deduction": "Lunchpaus (timmar)",
           "weekly_target": "Veckomål (timmar)",
-          "sheets_webhook_url": "Google Sheets webhook URL (valfri)",
+          "sheets_config_entry": "Google Sheets-anslutning (valfri)",
+          "sheets_worksheet": "Google Sheets fliknamn",
           "auto_lunch_default": "Anta att lunch togs om du inte svarar"
         }
       }
@@ -33,7 +34,8 @@
           "workday_hours": "Arbetsdagens längd (timmar, inkl. lunch)",
           "lunch_deduction": "Lunchpaus (timmar)",
           "weekly_target": "Veckomål (timmar)",
-          "sheets_webhook_url": "Google Sheets webhook URL",
+          "sheets_config_entry": "Google Sheets-anslutning",
+          "sheets_worksheet": "Google Sheets fliknamn",
           "auto_lunch_default": "Anta att lunch togs om du inte svarar"
         }
       }
@@ -76,6 +78,6 @@
     "log_arrival": {"name": "Logga ankomst", "description": "Registrera ankomst manuellt nu."},
     "log_departure": {"name": "Logga avresa", "description": "Registrera avresa manuellt nu."},
     "reset_today": {"name": "Nollställ dagen", "description": "Rensa dagens data."},
-    "export_history": {"name": "Exportera dagen till Sheets", "description": "Skicka dagens rad till Sheets-webhooken."}
+    "export_history": {"name": "Exportera dagen till Sheets", "description": "Skicka dagens rad till Google Sheets."}
   }
 }

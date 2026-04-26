@@ -1,20 +1,15 @@
 """Coordinator – contains all the business logic for Worktime Tracker."""
 from __future__ import annotations
 
-import asyncio
 import logging
 from datetime import date, datetime, time, timedelta
 from typing import Any
 
-import aiohttp
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant, State, callback
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import (
     async_track_state_change_event,
     async_track_time_change,
-    async_track_time_interval,
 )
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -28,13 +23,15 @@ from .const import (
     CONF_LUNCH_TIME,
     CONF_NOTIFY_SERVICE,
     CONF_PERSON_ENTITY,
-    CONF_SHEETS_WEBHOOK,
+    CONF_SHEETS_ENTRY,
+    CONF_SHEETS_WORKSHEET,
     CONF_WEEKLY_TARGET,
     CONF_WORK_ZONE,
     CONF_WORKDAY_HOURS,
     DEFAULT_AUTO_LUNCH_DEFAULT,
     DEFAULT_LUNCH_DEDUCTION,
     DEFAULT_LUNCH_TIME,
+    DEFAULT_SHEETS_WORKSHEET,
     DEFAULT_WEEKLY_TARGET,
     DEFAULT_WORKDAY_HOURS,
     DOMAIN,
@@ -145,9 +142,13 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         return float(self.options.get(CONF_WEEKLY_TARGET, DEFAULT_WEEKLY_TARGET))
 
     @property
-    def sheets_webhook(self) -> str | None:
-        url = self.options.get(CONF_SHEETS_WEBHOOK)
-        return url if url else None
+    def sheets_entry_id(self) -> str | None:
+        entry_id = self.options.get(CONF_SHEETS_ENTRY)
+        return entry_id if entry_id else None
+
+    @property
+    def sheets_worksheet(self) -> str:
+        return self.options.get(CONF_SHEETS_WORKSHEET) or DEFAULT_SHEETS_WORKSHEET
 
     @property
     def auto_lunch_default(self) -> bool:
@@ -340,13 +341,11 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         self.async_set_updated_data(self.snapshot())
 
     async def async_export_history(self) -> None:
-        """Re-send today's entry to Sheets webhook (or all of today)."""
-        today_iso = dt_util.now().date().isoformat()
-        for entry in self.history:
-            if entry.get("date") == today_iso:
-                await self._async_post_to_sheets(entry)
-                return
-        _LOGGER.info("Worktime: nothing to export for today")
+        """Re-send today's entry to Google Sheets."""
+        if self.arrival is None:
+            _LOGGER.info("Worktime: nothing to export for today")
+            return
+        await self._async_append_to_sheet()
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -535,31 +534,44 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             return
         await self._async_save_today()
         self.day_logged = True
-        # Build the row that goes to Sheets
-        entry = {
-            "date": self.current_date.isoformat(),
-            "arrival": self.arrival.isoformat() if self.arrival else "",
-            "planned_end": self.planned_end.isoformat() if self.planned_end else "",
-            "departure": self.departure.isoformat() if self.departure else "",
-            "lunch": self.lunch_status,
-            "hours": self.hours_worked_today(),
-        }
-        await self._async_post_to_sheets(entry)
+        await self._async_append_to_sheet()
 
-    async def _async_post_to_sheets(self, entry: dict[str, Any]) -> None:
-        url = self.sheets_webhook
-        if not url:
+    def _format_time(self, dt_obj: datetime | None) -> str:
+        if not dt_obj:
+            return ""
+        local = dt_util.as_local(dt_obj)
+        return local.strftime("%H:%M")
+
+    async def _async_append_to_sheet(self) -> None:
+        """Append today's row to Google Sheets via the official integration."""
+        entry_id = self.sheets_entry_id
+        if not entry_id:
             return
+        if not self.hass.services.has_service("google_sheets", "append_sheet"):
+            _LOGGER.warning(
+                "Worktime: google_sheets integration not installed — skipping Sheets log"
+            )
+            return
+
+        row = {
+            "Datum": self.current_date.isoformat(),
+            "Ankomst": self._format_time(self.arrival),
+            "Planerad slut": self._format_time(self.planned_end),
+            "Avresa": self._format_time(self.departure),
+            "Lunch": self.lunch_status,
+            "Timmar": self.hours_worked_today(),
+        }
         try:
-            session = async_get_clientsession(self.hass)
-            async with asyncio.timeout(15):
-                async with session.post(url, json=entry) as resp:
-                    if resp.status >= 400:
-                        body = await resp.text()
-                        _LOGGER.warning(
-                            "Worktime: Sheets webhook returned %s: %s", resp.status, body[:200]
-                        )
-                    else:
-                        _LOGGER.info("Worktime: logged day to Sheets")
-        except (asyncio.TimeoutError, aiohttp.ClientError) as exc:
-            _LOGGER.warning("Worktime: Sheets webhook failed: %s", exc)
+            await self.hass.services.async_call(
+                "google_sheets",
+                "append_sheet",
+                {
+                    "config_entry": entry_id,
+                    "worksheet": self.sheets_worksheet,
+                    "data": row,
+                },
+                blocking=True,
+            )
+            _LOGGER.info("Worktime: appended day to Sheets (%s)", self.sheets_worksheet)
+        except Exception as exc:  # pylint: disable=broad-except
+            _LOGGER.warning("Worktime: Google Sheets append failed: %s", exc)

@@ -12,7 +12,8 @@
           "workday_hours": "Workday length (hours, including lunch)",
           "lunch_deduction": "Lunch break length (hours)",
           "weekly_target": "Weekly target (hours)",
-          "sheets_webhook_url": "Google Sheets webhook URL (optional)",
+          "sheets_config_entry": "Google Sheets connection (optional)",
+          "sheets_worksheet": "Google Sheets tab name",
           "auto_lunch_default": "Assume lunch was taken if not answered"
         }
       }
@@ -33,7 +34,8 @@
           "workday_hours": "Workday length (hours, including lunch)",
           "lunch_deduction": "Lunch break length (hours)",
           "weekly_target": "Weekly target (hours)",
-          "sheets_webhook_url": "Google Sheets webhook URL",
+          "sheets_config_entry": "Google Sheets connection",
+          "sheets_worksheet": "Google Sheets tab name",
           "auto_lunch_default": "Assume lunch was taken if not answered"
         }
       }
@@ -76,6 +78,6 @@
     "log_arrival": {"name": "Log arrival", "description": "Manually register arrival now."},
     "log_departure": {"name": "Log departure", "description": "Manually register departure now."},
     "reset_today": {"name": "Reset today", "description": "Clear today's data."},
-    "export_history": {"name": "Export today to Sheets", "description": "Re-send today's row to the Sheets webhook."}
+    "export_history": {"name": "Export today to Sheets", "description": "Re-send today's row to Google Sheets."}
   }
 }
