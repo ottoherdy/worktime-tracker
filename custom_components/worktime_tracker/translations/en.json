@@ -1,0 +1,81 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up Worktime Tracker",
+        "description": "Track work hours via a zone, lunch confirmation, and weekly statistics.",
+        "data": {
+          "person_entity": "Person or device tracker",
+          "work_zone": "Work zone",
+          "notify_service": "Notify service (e.g. mobile_app_otto_phone)",
+          "lunch_time": "Lunch check time",
+          "workday_hours": "Workday length (hours, including lunch)",
+          "lunch_deduction": "Lunch break length (hours)",
+          "weekly_target": "Weekly target (hours)",
+          "sheets_webhook_url": "Google Sheets webhook URL (optional)",
+          "auto_lunch_default": "Assume lunch was taken if not answered"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Worktime Tracker is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Worktime Tracker options",
+        "data": {
+          "person_entity": "Person or device tracker",
+          "work_zone": "Work zone",
+          "notify_service": "Notify service",
+          "lunch_time": "Lunch check time",
+          "workday_hours": "Workday length (hours, including lunch)",
+          "lunch_deduction": "Lunch break length (hours)",
+          "weekly_target": "Weekly target (hours)",
+          "sheets_webhook_url": "Google Sheets webhook URL",
+          "auto_lunch_default": "Assume lunch was taken if not answered"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "arrival_time": {"name": "Arrival time"},
+      "planned_end_time": {"name": "Planned end time"},
+      "departure_time": {"name": "Departure time"},
+      "hours_today": {"name": "Hours today"},
+      "hours_week": {"name": "Hours this week"},
+      "overtime_week": {"name": "Overtime this week"},
+      "time_remaining": {"name": "Time remaining"},
+      "status": {
+        "name": "Status",
+        "state": {
+          "off_duty": "Off duty",
+          "at_work": "At work",
+          "done": "Done",
+          "overtime": "Overtime"
+        }
+      },
+      "lunch_status": {
+        "name": "Lunch status",
+        "state": {
+          "yes": "Yes",
+          "no": "No",
+          "unknown": "Unknown"
+        }
+      }
+    },
+    "binary_sensor": {
+      "at_work": {"name": "At work"},
+      "day_complete": {"name": "Day complete"}
+    }
+  },
+  "services": {
+    "set_lunch": {"name": "Set lunch status", "description": "Mark whether lunch was taken today."},
+    "log_arrival": {"name": "Log arrival", "description": "Manually register arrival now."},
+    "log_departure": {"name": "Log departure", "description": "Manually register departure now."},
+    "reset_today": {"name": "Reset today", "description": "Clear today's data."},
+    "export_history": {"name": "Export today to Sheets", "description": "Re-send today's row to the Sheets webhook."}
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Konfigurera Worktime Tracker",
+        "description": "Spåra arbetstid via en zon, lunchbekräftelse och veckostatistik.",
+        "data": {
+          "person_entity": "Person eller device tracker",
+          "work_zone": "Arbetszon",
+          "notify_service": "Notify-tjänst (t.ex. mobile_app_otto_phone)",
+          "lunch_time": "Tid för lunch-check",
+          "workday_hours": "Arbetsdagens längd (timmar, inkl. lunch)",
+          "lunch_deduction": "Lunchpaus (timmar)",
+          "weekly_target": "Veckomål (timmar)",
+          "sheets_webhook_url": "Google Sheets webhook URL (valfri)",
+          "auto_lunch_default": "Anta att lunch togs om du inte svarar"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Worktime Tracker är redan konfigurerad."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Inställningar för Worktime Tracker",
+        "data": {
+          "person_entity": "Person eller device tracker",
+          "work_zone": "Arbetszon",
+          "notify_service": "Notify-tjänst",
+          "lunch_time": "Tid för lunch-check",
+          "workday_hours": "Arbetsdagens längd (timmar, inkl. lunch)",
+          "lunch_deduction": "Lunchpaus (timmar)",
+          "weekly_target": "Veckomål (timmar)",
+          "sheets_webhook_url": "Google Sheets webhook URL",
+          "auto_lunch_default": "Anta att lunch togs om du inte svarar"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "arrival_time": {"name": "Ankomsttid"},
+      "planned_end_time": {"name": "Planerad sluttid"},
+      "departure_time": {"name": "Avresetid"},
+      "hours_today": {"name": "Timmar idag"},
+      "hours_week": {"name": "Timmar denna vecka"},
+      "overtime_week": {"name": "Övertid denna vecka"},
+      "time_remaining": {"name": "Tid kvar"},
+      "status": {
+        "name": "Status",
+        "state": {
+          "off_duty": "Inte på jobbet",
+          "at_work": "På jobbet",
+          "done": "Klar",
+          "overtime": "Övertid"
+        }
+      },
+      "lunch_status": {
+        "name": "Lunchstatus",
+        "state": {
+          "yes": "Ja",
+          "no": "Nej",
+          "unknown": "Okänd"
+        }
+      }
+    },
+    "binary_sensor": {
+      "at_work": {"name": "På jobbet"},
+      "day_complete": {"name": "Dag klar"}
+    }
+  },
+  "services": {
+    "set_lunch": {"name": "Sätt lunchstatus", "description": "Markera om du haft lunch idag."},
+    "log_arrival": {"name": "Logga ankomst", "description": "Registrera ankomst manuellt nu."},
+    "log_departure": {"name": "Logga avresa", "description": "Registrera avresa manuellt nu."},
+    "reset_today": {"name": "Nollställ dagen", "description": "Rensa dagens data."},
+    "export_history": {"name": "Exportera dagen till Sheets", "description": "Skicka dagens rad till Sheets-webhooken."}
+  }
+}

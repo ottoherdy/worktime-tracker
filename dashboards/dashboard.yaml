@@ -1,0 +1,166 @@
+# Worktime Tracker dashboard
+# ----------------------------
+# Lägg till denna som en ny vy i Lovelace, eller importera hela filen som en
+# ny dashboard via UI:t (Settings → Dashboards → Add → New dashboard from scratch
+# → Take control → klistra in denna YAML).
+#
+# Beroenden:
+#   - HACS: ApexCharts Card  (https://github.com/RomRider/apexcharts-card)
+#   - HACS: mushroom         (frivilligt – för snyggare chip-rad högst upp)
+#
+# Om du inte har mushroom installerat, byt mushroom-* till glance/entities.
+
+title: Worktime
+views:
+  - title: Idag
+    path: today
+    icon: mdi:briefcase-clock
+    cards:
+
+      # --- Översta raden: status-chips ---
+      - type: horizontal-stack
+        cards:
+          - type: custom:mushroom-entity-card
+            entity: sensor.worktime_tracker_status
+            name: Status
+            icon: mdi:account-clock
+            tap_action:
+              action: more-info
+          - type: custom:mushroom-entity-card
+            entity: sensor.worktime_tracker_lunch_status
+            name: Lunch
+            icon: mdi:food
+            tap_action:
+              action: call-service
+              service: worktime_tracker.set_lunch
+              service_data:
+                had_lunch: true
+          - type: custom:mushroom-entity-card
+            entity: binary_sensor.worktime_tracker_at_work
+            name: På jobbet
+            icon: mdi:office-building
+
+      # --- Dagens nyckeltal ---
+      - type: entities
+        title: Dagens tider
+        show_header_toggle: false
+        entities:
+          - entity: sensor.worktime_tracker_arrival_time
+            name: Ankomst
+          - entity: sensor.worktime_tracker_planned_end_time
+            name: Planerad sluttid
+          - entity: sensor.worktime_tracker_departure_time
+            name: Avresa
+          - entity: sensor.worktime_tracker_hours_today
+            name: Timmar idag
+          - entity: sensor.worktime_tracker_time_remaining
+            name: Tid kvar (min)
+
+      # --- Veckans summering ---
+      - type: glance
+        title: Denna vecka
+        columns: 2
+        entities:
+          - entity: sensor.worktime_tracker_hours_week
+            name: Timmar
+          - entity: sensor.worktime_tracker_overtime_week
+            name: Övertid
+
+      # --- ApexCharts: denna vecka vs förra ---
+      - type: custom:apexcharts-card
+        header:
+          show: true
+          title: Denna vecka vs förra
+          show_states: false
+        graph_span: 1d
+        chart_type: bar
+        apex_config:
+          chart:
+            height: 320
+          plotOptions:
+            bar:
+              columnWidth: 60%
+              borderRadius: 4
+          xaxis:
+            categories:
+              - Mån
+              - Tis
+              - Ons
+              - Tor
+              - Fre
+          yaxis:
+            title:
+              text: Timmar
+            min: 0
+            max: 12
+          stroke:
+            width: [0, 0, 2]
+            dashArray: [0, 0, 6]
+          legend:
+            position: top
+          dataLabels:
+            enabled: true
+            formatter: |
+              EVAL:function(val) { return val ? val.toFixed(1) + 'h' : ''; }
+        series:
+          - entity: sensor.worktime_tracker_hours_week
+            name: Denna vecka
+            type: column
+            color: "#3B82F6"
+            data_generator: |
+              const days = entity.attributes.this_week || [];
+              return days.map((d, i) => [i, d.hours]);
+          - entity: sensor.worktime_tracker_hours_week
+            name: Förra veckan
+            type: column
+            color: "#9CA3AF"
+            data_generator: |
+              const days = entity.attributes.last_week || [];
+              return days.map((d, i) => [i, d.hours]);
+          - entity: sensor.worktime_tracker_hours_week
+            name: 8h-mål
+            type: line
+            color: "#F97316"
+            stroke_width: 2
+            data_generator: |
+              return [[0, 8], [1, 8], [2, 8], [3, 8], [4, 8]];
+
+      # --- Snabbåtgärder ---
+      - type: entities
+        title: Snabbåtgärder
+        show_header_toggle: false
+        entities:
+          - type: call-service
+            name: Logga ankomst (manuellt)
+            icon: mdi:login
+            action_name: Kör
+            service: worktime_tracker.log_arrival
+          - type: call-service
+            name: Logga avresa (manuellt)
+            icon: mdi:logout
+            action_name: Kör
+            service: worktime_tracker.log_departure
+          - type: call-service
+            name: Markera lunch som tagen
+            icon: mdi:food
+            action_name: Ja
+            service: worktime_tracker.set_lunch
+            service_data:
+              had_lunch: true
+          - type: call-service
+            name: Markera lunch som ej tagen
+            icon: mdi:food-off
+            action_name: Nej
+            service: worktime_tracker.set_lunch
+            service_data:
+              had_lunch: false
+          - type: call-service
+            name: Skicka dagen till Sheets
+            icon: mdi:google-spreadsheet
+            action_name: Skicka
+            service: worktime_tracker.export_history
+          - type: call-service
+            name: Nollställ idag
+            icon: mdi:restart
+            action_name: Nollställ
+            service: worktime_tracker.reset_today
