@@ -1,13 +1,13 @@
 {
   "domain": "worktime_tracker",
   "name": "Worktime Tracker",
-  "version": "1.1.0",
-  "documentation": "https://github.com/ottoherdy/worktime-tracker",
-  "issue_tracker": "https://github.com/ottoherdy/worktime-tracker/issues",
   "codeowners": ["@ottoherdy"],
   "config_flow": true,
-  "iot_class": "local_push",
-  "integration_type": "service",
   "dependencies": ["zone", "person"],
-  "requirements": []
+  "documentation": "https://github.com/ottoherdy/worktime-tracker",
+  "integration_type": "service",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/ottoherdy/worktime-tracker/issues",
+  "requirements": [],
+  "version": "1.1.0"
 }
