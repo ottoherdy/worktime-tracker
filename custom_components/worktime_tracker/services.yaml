@@ -26,3 +26,39 @@ reset_today:
 export_history:
   name: Export today to Sheets
   description: Re-send today's row to the configured Google Sheets.
+
+edit_day:
+  name: Edit day
+  description: Edit arrival, departure or lunch for any date.
+  fields:
+    date:
+      name: Date
+      description: The date to edit (YYYY-MM-DD)
+      required: true
+      example: "2026-04-25"
+      selector:
+        text:
+    arrival:
+      name: Arrival
+      description: Arrival time (HH:MM)
+      required: false
+      example: "08:15"
+      selector:
+        text:
+    departure:
+      name: Departure
+      description: Departure time (HH:MM)
+      required: false
+      example: "16:30"
+      selector:
+        text:
+    lunch:
+      name: Lunch
+      description: Lunch status
+      required: false
+      selector:
+        select:
+          options:
+            - "yes"
+            - "no"
+            - "unknown"

@@ -15,8 +15,10 @@ from .const import (
     SERVICE_LOG_DEPARTURE,
     SERVICE_RESET_TODAY,
     SERVICE_EXPORT_HISTORY,
+    SERVICE_EDIT_DAY,
     LUNCH_YES,
     LUNCH_NO,
+    LUNCH_UNKNOWN,
 )
 from .coordinator import WorktimeCoordinator
 
@@ -67,6 +69,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 SERVICE_LOG_DEPARTURE,
                 SERVICE_RESET_TODAY,
                 SERVICE_EXPORT_HISTORY,
+                SERVICE_EDIT_DAY,
             ):
                 if hass.services.has_service(DOMAIN, service):
                     hass.services.async_remove(DOMAIN, service)
@@ -107,6 +110,18 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         for coord in _get_coordinators(hass):
             await coord.async_export_history()
 
+    async def handle_edit_day(call: ServiceCall) -> None:
+        from datetime import date as date_type
+        raw_date = call.data["date"]
+        target = date_type.fromisoformat(raw_date) if isinstance(raw_date, str) else raw_date
+        for coord in _get_coordinators(hass):
+            await coord.async_edit_day(
+                target_date=target,
+                arrival=call.data.get("arrival"),
+                departure=call.data.get("departure"),
+                lunch=call.data.get("lunch"),
+            )
+
     set_lunch_schema = vol.Schema({vol.Optional("had_lunch", default=True): cv.boolean})
 
     hass.services.async_register(
@@ -116,3 +131,11 @@ async def _async_register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(DOMAIN, SERVICE_LOG_DEPARTURE, handle_log_departure)
     hass.services.async_register(DOMAIN, SERVICE_RESET_TODAY, handle_reset_today)
     hass.services.async_register(DOMAIN, SERVICE_EXPORT_HISTORY, handle_export_history)
+
+    edit_day_schema = vol.Schema({
+        vol.Required("date"): cv.string,
+        vol.Optional("arrival"): cv.string,
+        vol.Optional("departure"): cv.string,
+        vol.Optional("lunch"): vol.In([LUNCH_YES, LUNCH_NO, LUNCH_UNKNOWN]),
+    })
+    hass.services.async_register(DOMAIN, SERVICE_EDIT_DAY, handle_edit_day, schema=edit_day_schema)

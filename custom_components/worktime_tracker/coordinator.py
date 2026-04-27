@@ -386,6 +386,59 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         await self._async_save_today()
         self.async_set_updated_data(self.snapshot())
 
+    async def async_edit_day(
+        self,
+        target_date: date,
+        arrival: str | None = None,
+        departure: str | None = None,
+        lunch: str | None = None,
+    ) -> None:
+        """Edit a historical day entry. Times as HH:MM strings."""
+        today = dt_util.now().date()
+        target_iso = target_date.isoformat()
+
+        def _parse_time(t: str, ref_date: date) -> datetime:
+            h, m = map(int, t.split(":"))
+            local = datetime(ref_date.year, ref_date.month, ref_date.day, h, m)
+            return dt_util.as_utc(dt_util.as_local(local))
+
+        # Find or create the entry
+        entry: dict[str, Any] | None = None
+        for e in self.history:
+            if e.get("date") == target_iso:
+                entry = e
+                break
+        if entry is None:
+            entry = {"date": target_iso, "arrival": None, "planned_end": None, "departure": None, "lunch": LUNCH_UNKNOWN, "hours": 0.0}
+            self.history.append(entry)
+
+        if arrival:
+            arr_dt = _parse_time(arrival, target_date)
+            entry["arrival"] = arr_dt.isoformat()
+        if departure:
+            dep_dt = _parse_time(departure, target_date)
+            entry["departure"] = dep_dt.isoformat()
+        if lunch:
+            entry["lunch"] = lunch
+
+        # Recalculate hours if we have both arrival and departure
+        if entry.get("arrival") and entry.get("departure"):
+            arr = datetime.fromisoformat(entry["arrival"])
+            dep = datetime.fromisoformat(entry["departure"])
+            hours = (dep - arr).total_seconds() / 3600.0
+            if entry.get("lunch") == LUNCH_YES:
+                hours -= self.lunch_deduction
+            entry["hours"] = max(0.0, round(hours, 2))
+
+        await self._async_save_history()
+
+        # If editing today, sync in-memory state
+        if target_date == today:
+            self._restore_from_history_entry(entry)
+
+        self.async_set_updated_data(self.snapshot())
+        _LOGGER.info("Worktime: edited day %s → %s", target_iso, entry)
+
     async def async_export_history(self) -> None:
         """Re-send today's entry to Google Sheets."""
         if self.arrival is None:
