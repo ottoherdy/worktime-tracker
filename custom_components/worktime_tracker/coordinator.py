@@ -559,6 +559,22 @@ class WorktimeCoordinator(DataUpdateCoordinator):
     def daily_net_target(self) -> float:
         return round(self.workday_hours - self.lunch_deduction, 2)
 
+    def hours_worked_last_week(self) -> float:
+        last_week_date = dt_util.now().date() - timedelta(weeks=1)
+        return self.hours_worked_in_week(target_date=last_week_date)
+
+    def overtime_last_week(self) -> float:
+        last_week_date = dt_util.now().date() - timedelta(weeks=1)
+        monday = last_week_date - timedelta(days=last_week_date.weekday())
+        days_with_work = 0
+        for offset in range(5):
+            d = monday + timedelta(days=offset)
+            d_iso = d.isoformat()
+            if any(e.get("date") == d_iso and float(e.get("hours", 0)) > 0 for e in self.history):
+                days_with_work += 1
+        expected = days_with_work * self.daily_net_target
+        return round(self.hours_worked_last_week() - expected, 2)
+
     def overtime_today(self) -> float:
         return round(self.hours_worked_today() - self.daily_net_target, 2)
 

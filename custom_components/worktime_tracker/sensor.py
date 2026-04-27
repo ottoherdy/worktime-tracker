@@ -65,6 +65,8 @@ async def async_setup_entry(
         StatusSensor(coordinator, entry),
         LunchStatusSensor(coordinator, entry),
         *[WeekdaySensor(coordinator, entry, i, weeks_back=0) for i in range(5)],
+        HoursLastWeekSensor(coordinator, entry),
+        OvertimeLastWeekSensor(coordinator, entry),
         *[WeekdaySensor(coordinator, entry, i, weeks_back=1) for i in range(5)],
     ]
     async_add_entities(sensors)
@@ -257,6 +259,32 @@ class LunchStatusSensor(_BaseSensor):
     @property
     def native_value(self) -> str:
         return self.coordinator.lunch_status
+
+
+class HoursLastWeekSensor(_LastWeekSensor):
+    _key = "hours_last_week"
+    _attr_name = "Hours last week"
+    _attr_native_unit_of_measurement = UnitOfTime.HOURS
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = "mdi:calendar-week"
+    _attr_suggested_display_precision = 2
+
+    @property
+    def native_value(self) -> float:
+        return self.coordinator.hours_worked_last_week()
+
+
+class OvertimeLastWeekSensor(_LastWeekSensor):
+    _key = "overtime_last_week"
+    _attr_name = "Overtime last week"
+    _attr_native_unit_of_measurement = UnitOfTime.HOURS
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = "mdi:clock-plus-outline"
+    _attr_suggested_display_precision = 2
+
+    @property
+    def native_value(self) -> float:
+        return self.coordinator.overtime_last_week()
 
 
 _WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
