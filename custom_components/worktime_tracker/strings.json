@@ -7,7 +7,7 @@
         "data": {
           "person_entity": "Person or device tracker",
           "work_zone": "Work zone",
-          "notify_service": "Notify service (e.g. mobile_app_otto_phone)",
+          "notify_service": "Notify service (e.g. mobile_app_your_phone)",
           "lunch_time": "Lunch check time",
           "workday_hours": "Workday length (hours, including lunch)",
           "lunch_deduction": "Lunch break length (hours)",
@@ -64,7 +64,7 @@
         "state": {
           "yes": "Yes",
           "no": "No",
-          "unknown": "Unknown"
+          "unknown": "—"
         }
       }
     },

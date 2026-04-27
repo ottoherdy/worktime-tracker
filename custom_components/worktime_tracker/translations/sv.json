@@ -7,7 +7,7 @@
         "data": {
           "person_entity": "Person eller device tracker",
           "work_zone": "Arbetszon",
-          "notify_service": "Notify-tjänst (t.ex. mobile_app_otto_phone)",
+          "notify_service": "Notify-tjänst (t.ex. mobile_app_your_phone)",
           "lunch_time": "Tid för lunch-check",
           "workday_hours": "Arbetsdagens längd (timmar, inkl. lunch)",
           "lunch_deduction": "Lunchpaus (timmar)",
@@ -64,7 +64,7 @@
         "state": {
           "yes": "Ja",
           "no": "Nej",
-          "unknown": "Okänd"
+          "unknown": "—"
         }
       }
     },

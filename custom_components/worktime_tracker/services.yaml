@@ -1,10 +1,10 @@
 set_lunch:
-  name: Sätt lunchstatus
-  description: Markera om du har haft lunch idag eller inte.
+  name: Set lunch status
+  description: Mark whether lunch was taken today.
   fields:
     had_lunch:
-      name: Hade lunch
-      description: True = du har haft lunch (full arbetsdag), False = ingen lunch (-30 min)
+      name: Had lunch
+      description: "True = lunch taken (full workday), False = no lunch (-30 min)"
       required: false
       default: true
       example: true
@@ -12,17 +12,17 @@ set_lunch:
         boolean:
 
 log_arrival:
-  name: Logga ankomst
-  description: Manuellt registrera att du är på jobbet just nu.
+  name: Log arrival
+  description: Manually register arrival at work right now.
 
 log_departure:
-  name: Logga avresa
-  description: Manuellt registrera att du lämnar jobbet just nu.
+  name: Log departure
+  description: Manually register departure from work right now.
 
 reset_today:
-  name: Nollställ dagen
-  description: Ta bort dagens registreringar (om du vill börja om).
+  name: Reset today
+  description: Clear today's registrations and start over.
 
 export_history:
-  name: Skicka dagens rad till Google Sheets
-  description: Skickar (eller skickar om) dagens rad till den konfigurerade Sheets-webhooken.
+  name: Export today to Sheets
+  description: Re-send today's row to the configured Google Sheets.

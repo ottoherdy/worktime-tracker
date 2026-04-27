@@ -90,7 +90,7 @@ async function buildWidget() {
   // Kontrollera om vi fick data
   if (!arrivalData || !statusData) {
     widget.backgroundColor = COLORS.darkBg;
-    const errorText = widget.addText("⚠ Kan ej nå HA");
+    const errorText = widget.addText("⚠ Cannot reach HA");
     errorText.textColor = new Color("#EF4444");
     errorText.font = Font.systemFont(16);
     errorText.centerAlignText();
@@ -116,14 +116,14 @@ async function buildWidget() {
   // Baserat på status
   if (status === "off_duty") {
     // Ej på jobbet
-    const statusText = container.addText("Ej på jobbet");
+    const statusText = container.addText("Not at work");
     statusText.textColor = new Color(COLORS.offDuty);
     statusText.font = Font.boldSystemFont(24);
     statusText.centerAlignText();
 
   } else if (status === "done") {
     // Arbetsdag avslutad
-    const statusText = container.addText("Klar! ✓");
+    const statusText = container.addText("Done! ✓");
     statusText.textColor = new Color(COLORS.done);
     statusText.font = Font.boldSystemFont(28);
     statusText.centerAlignText();
@@ -205,7 +205,7 @@ async function buildWidget() {
   }
 
   // Text under cirkeln: Idag: X.Xh
-  const hoursText = container.addText(`Idag: ${hoursToday}h`);
+  const hoursText = container.addText(`Today: ${hoursToday}h`);
   hoursText.textColor = COLORS.text;
   hoursText.font = Font.systemFont(14);
   hoursText.centerAlignText();

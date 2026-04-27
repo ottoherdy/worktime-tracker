@@ -50,7 +50,7 @@ class _BaseSensor(CoordinatorEntity[WorktimeCoordinator], SensorEntity):
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             name="Worktime Tracker",
-            manufacturer="Otto",
+            manufacturer="Worktime Tracker",
             model="Worktime Tracker",
             entry_type=None,
         )
@@ -58,40 +58,44 @@ class _BaseSensor(CoordinatorEntity[WorktimeCoordinator], SensorEntity):
     _key: str = ""
 
 
+def _fmt(dt: datetime | None) -> str:
+    if dt is None:
+        return "—"
+    local = dt_util.as_local(dt)
+    return local.strftime("%H:%M")
+
+
 class ArrivalTimeSensor(_BaseSensor):
     _key = "arrival_time"
     _attr_translation_key = "arrival_time"
     _attr_name = "Arrival time"
-    _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_icon = "mdi:login"
 
     @property
-    def native_value(self) -> datetime | None:
-        return self.coordinator.arrival
+    def native_value(self) -> str:
+        return _fmt(self.coordinator.arrival)
 
 
 class PlannedEndTimeSensor(_BaseSensor):
     _key = "planned_end_time"
     _attr_translation_key = "planned_end_time"
     _attr_name = "Planned end time"
-    _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_icon = "mdi:flag-checkered"
 
     @property
-    def native_value(self) -> datetime | None:
-        return self.coordinator.planned_end
+    def native_value(self) -> str:
+        return _fmt(self.coordinator.planned_end)
 
 
 class DepartureTimeSensor(_BaseSensor):
     _key = "departure_time"
     _attr_translation_key = "departure_time"
     _attr_name = "Departure time"
-    _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_icon = "mdi:logout"
 
     @property
-    def native_value(self) -> datetime | None:
-        return self.coordinator.departure
+    def native_value(self) -> str:
+        return _fmt(self.coordinator.departure)
 
 
 class HoursTodaySensor(_BaseSensor):
@@ -227,6 +231,6 @@ def _week_breakdown(coordinator: WorktimeCoordinator, weeks_back: int = 0) -> li
             )
             if not already_logged:
                 hours = coordinator.hours_worked_today()
-        _WEEKDAYS_SV = ["Mån", "Tis", "Ons", "Tor", "Fre", "Lör", "Sön"]
-        days.append({"date": d_iso, "weekday": _WEEKDAYS_SV[d.weekday()], "hours": round(hours, 2)})
+        _WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        days.append({"date": d_iso, "weekday": _WEEKDAYS[d.weekday()], "hours": round(hours, 2)})
     return days

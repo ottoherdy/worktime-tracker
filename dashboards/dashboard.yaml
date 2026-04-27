@@ -51,7 +51,7 @@ sections:
   - type: grid
     cards:
       - type: heading
-        heading: Arbetstid
+        heading: Work time
         heading_style: title
         icon: mdi:briefcase-clock
       - type: custom:mushroom-entity-card
@@ -65,7 +65,7 @@ sections:
           grid_rows: 1
       - type: custom:mushroom-entity-card
         entity: binary_sensor.worktime_tracker_at_work
-        name: På jobbet
+        name: At work
         icon: mdi:office-building
         layout_options:
           grid_columns: 1
@@ -84,7 +84,7 @@ sections:
           grid_rows: 1
       - type: custom:mushroom-entity-card
         entity: sensor.worktime_tracker_hours_today
-        name: Timmar idag
+        name: Hours today
         icon: mdi:clock-outline
         layout_options:
           grid_columns: 1
@@ -94,32 +94,32 @@ sections:
   - type: grid
     cards:
       - type: heading
-        heading: Dagens tider
+        heading: Today
         heading_style: title
       - type: custom:mushroom-entity-card
         entity: sensor.worktime_tracker_arrival_time
-        name: Ankomst
+        name: Arrival
         icon: mdi:login
         layout_options:
           grid_columns: 2
           grid_rows: 1
       - type: custom:mushroom-entity-card
         entity: sensor.worktime_tracker_planned_end_time
-        name: Planerad sluttid
+        name: Planned end
         icon: mdi:flag-checkered
         layout_options:
           grid_columns: 2
           grid_rows: 1
       - type: custom:mushroom-entity-card
         entity: sensor.worktime_tracker_departure_time
-        name: Avresa
+        name: Departure
         icon: mdi:logout
         layout_options:
           grid_columns: 2
           grid_rows: 1
       - type: custom:mushroom-entity-card
         entity: sensor.worktime_tracker_time_remaining
-        name: Tid kvar (min)
+        name: Time remaining (min)
         icon: mdi:timer-sand
         layout_options:
           grid_columns: 2
@@ -129,24 +129,24 @@ sections:
   - type: grid
     cards:
       - type: heading
-        heading: Denna vecka
+        heading: This week
         heading_style: title
       - type: custom:mushroom-entity-card
         entity: sensor.worktime_tracker_hours_week
-        name: Timmar
+        name: Hours
         icon: mdi:calendar-week
         layout_options:
           grid_columns: 2
           grid_rows: 1
       - type: custom:mushroom-entity-card
         entity: sensor.worktime_tracker_overtime_week
-        name: Övertid
+        name: Overtime
         icon: mdi:clock-plus-outline
         layout_options:
           grid_columns: 2
           grid_rows: 1
       - type: markdown
-        title: Senaste dagarna
+        title: Recent days
         content: >
           {% set days = state_attr('sensor.worktime_tracker_hours_week', 'recent_days') or [] %}
           | Dag | Datum | Timmar |
@@ -162,7 +162,7 @@ sections:
   - type: grid
     cards:
       - type: heading
-        heading: Denna vecka vs förra
+        heading: This week vs last week
         heading_style: title
       - type: custom:apexcharts-card
         header:
@@ -197,14 +197,14 @@ sections:
               EVAL:function(val) { return val ? val.toFixed(1) + 'h' : ''; }
         series:
           - entity: sensor.worktime_tracker_hours_week
-            name: Denna vecka
+            name: This week
             type: column
             color: "#3B82F6"
             data_generator: |
               const days = entity.attributes.this_week || [];
               return days.map(d => ({ x: d.weekday, y: d.hours }));
           - entity: sensor.worktime_tracker_hours_week
-            name: Förra veckan
+            name: Last week
             type: column
             color: "#9CA3AF"
             data_generator: |
@@ -217,18 +217,15 @@ sections:
             stroke_width: 2
             data_generator: |
               return [{x:'Mån',y:8},{x:'Tis',y:8},{x:'Ons',y:8},{x:'Tor',y:8},{x:'Fre',y:8}];
-        layout_options:
-          grid_columns: 4
-          grid_rows: 4
 
   # --- Snabbåtgärder ---
   - type: grid
     cards:
       - type: heading
-        heading: Snabbåtgärder
+        heading: Quick actions
         heading_style: title
       - type: button
-        name: Logga ankomst
+        name: Log arrival
         icon: mdi:login
         tap_action:
           action: call-service
@@ -237,7 +234,7 @@ sections:
           grid_columns: 2
           grid_rows: 1
       - type: button
-        name: Logga avresa
+        name: Log departure
         icon: mdi:logout
         tap_action:
           action: call-service
@@ -246,7 +243,7 @@ sections:
           grid_columns: 2
           grid_rows: 1
       - type: button
-        name: Lunch — Ja
+        name: Lunch — Yes
         icon: mdi:food
         tap_action:
           action: call-service
@@ -257,7 +254,7 @@ sections:
           grid_columns: 2
           grid_rows: 1
       - type: button
-        name: Lunch — Nej
+        name: Lunch — No
         icon: mdi:food-off
         tap_action:
           action: call-service
@@ -268,7 +265,7 @@ sections:
           grid_columns: 2
           grid_rows: 1
       - type: button
-        name: Skicka till Sheets
+        name: Send to Sheets
         icon: mdi:google-spreadsheet
         tap_action:
           action: call-service
@@ -277,7 +274,7 @@ sections:
           grid_columns: 2
           grid_rows: 1
       - type: button
-        name: Nollställ idag
+        name: Reset today
         icon: mdi:restart
         tap_action:
           action: call-service

@@ -6,7 +6,7 @@ import math
 from datetime import date, datetime, time, timedelta
 from typing import Any
 
-_WEEKDAYS_SV = ["Måndag", "Tisdag", "Onsdag", "Torsdag", "Fredag", "Lördag", "Söndag"]
+_WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
 def _round_quarter(hours: float) -> float:
@@ -562,14 +562,14 @@ class WorktimeCoordinator(DataUpdateCoordinator):
 
         hours = self.hours_worked_today()
         row = {
-            "Datum": self.current_date.isoformat(),
-            "Veckodag": _WEEKDAYS_SV[self.current_date.weekday()],
-            "Ankomst": self._format_time(self.arrival),
-            "Planerad slut": self._format_time(self.planned_end),
-            "Avresa": self._format_time(self.departure),
+            "Date": self.current_date.isoformat(),
+            "Weekday": _WEEKDAYS[self.current_date.weekday()],
+            "Arrival": self._format_time(self.arrival),
+            "Planned end": self._format_time(self.planned_end),
+            "Departure": self._format_time(self.departure),
             "Lunch": self.lunch_status,
-            "Timmar": hours,
-            "Timmar (avrundat)": _round_quarter(hours),
+            "Hours": hours,
+            "Hours (rounded)": _round_quarter(hours),
         }
         try:
             await self.hass.services.async_call(
