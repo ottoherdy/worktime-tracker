@@ -35,10 +35,10 @@ class _BaseBin(CoordinatorEntity[WorktimeCoordinator], BinarySensorEntity):
         super().__init__(coordinator)
         self._attr_unique_id = f"{entry.entry_id}_{self._key}"
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name="Worktime Tracker",
-            manufacturer="Otto",
-            model="Worktime Tracker",
+            identifiers={(DOMAIN, f"{entry.entry_id}_today")},
+            name="Today",
+            manufacturer="Worktime Tracker",
+            model="Daily tracking",
         )
 
 

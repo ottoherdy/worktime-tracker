@@ -11,7 +11,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfTime
+from homeassistant.const import EntityCategory, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -20,6 +20,33 @@ from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 from .coordinator import WorktimeCoordinator
+
+
+def _device_today(entry: ConfigEntry) -> DeviceInfo:
+    return DeviceInfo(
+        identifiers={(DOMAIN, f"{entry.entry_id}_today")},
+        name="Today",
+        manufacturer="Worktime Tracker",
+        model="Daily tracking",
+    )
+
+
+def _device_this_week(entry: ConfigEntry) -> DeviceInfo:
+    return DeviceInfo(
+        identifiers={(DOMAIN, f"{entry.entry_id}_this_week")},
+        name="This Week",
+        manufacturer="Worktime Tracker",
+        model="Weekly tracking",
+    )
+
+
+def _device_last_week(entry: ConfigEntry) -> DeviceInfo:
+    return DeviceInfo(
+        identifiers={(DOMAIN, f"{entry.entry_id}_last_week")},
+        name="Last Week",
+        manufacturer="Worktime Tracker",
+        model="Weekly tracking",
+    )
 
 
 async def async_setup_entry(
@@ -45,20 +72,25 @@ async def async_setup_entry(
 
 class _BaseSensor(CoordinatorEntity[WorktimeCoordinator], SensorEntity):
     _attr_has_entity_name = True
+    _key: str = ""
 
     def __init__(self, coordinator: WorktimeCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator)
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_{self._key}"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.entry_id)},
-            name="Worktime Tracker",
-            manufacturer="Worktime Tracker",
-            model="Worktime Tracker",
-            entry_type=None,
-        )
+        self._attr_device_info = _device_today(entry)
 
-    _key: str = ""
+
+class _ThisWeekSensor(_BaseSensor):
+    def __init__(self, coordinator: WorktimeCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry)
+        self._attr_device_info = _device_this_week(entry)
+
+
+class _LastWeekSensor(_BaseSensor):
+    def __init__(self, coordinator: WorktimeCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry)
+        self._attr_device_info = _device_last_week(entry)
 
 
 def _fmt(dt: datetime | None) -> str:
@@ -117,7 +149,7 @@ class HoursTodaySensor(_BaseSensor):
         return self.coordinator.hours_worked_today()
 
 
-class HoursWeekSensor(_BaseSensor):
+class HoursWeekSensor(_ThisWeekSensor):
     _key = "hours_week"
     _attr_translation_key = "hours_week"
     _attr_name = "Hours this week"
@@ -160,7 +192,7 @@ class OvertimeTodaySensor(_BaseSensor):
         return self.coordinator.overtime_today()
 
 
-class OvertimeWeekSensor(_BaseSensor):
+class OvertimeWeekSensor(_ThisWeekSensor):
     _key = "overtime_week"
     _attr_translation_key = "overtime_week"
     _attr_name = "Overtime this week"
@@ -246,6 +278,7 @@ class WeekdaySensor(_BaseSensor):
         self._key = f"{prefix}{_WEEKDAY_KEYS[weekday_index]}"
         self._attr_name = f"Last {_WEEKDAY_NAMES[weekday_index]}" if weeks_back else _WEEKDAY_NAMES[weekday_index]
         super().__init__(coordinator, entry)
+        self._attr_device_info = _device_last_week(entry) if weeks_back else _device_this_week(entry)
 
     def _day_entry(self) -> dict[str, Any]:
         today = dt_util.now().date()
