@@ -33,8 +33,8 @@ edit_day:
   fields:
     date:
       name: Date
-      description: The date to edit (YYYY-MM-DD)
-      required: true
+      description: The date to edit (YYYY-MM-DD). Leave empty for today.
+      required: false
       example: "2026-04-25"
       selector:
         text:

@@ -7,6 +7,7 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv
+from homeassistant.util import dt as dt_util
 
 from .const import (
     DOMAIN,
@@ -112,8 +113,8 @@ async def _async_register_services(hass: HomeAssistant) -> None:
 
     async def handle_edit_day(call: ServiceCall) -> None:
         from datetime import date as date_type
-        raw_date = call.data["date"]
-        target = date_type.fromisoformat(raw_date) if isinstance(raw_date, str) else raw_date
+        raw_date = call.data.get("date")
+        target = date_type.fromisoformat(raw_date) if raw_date else dt_util.now().date()
         for coord in _get_coordinators(hass):
             await coord.async_edit_day(
                 target_date=target,
@@ -133,7 +134,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(DOMAIN, SERVICE_EXPORT_HISTORY, handle_export_history)
 
     edit_day_schema = vol.Schema({
-        vol.Required("date"): cv.string,
+        vol.Optional("date"): cv.string,
         vol.Optional("arrival"): cv.string,
         vol.Optional("departure"): cv.string,
         vol.Optional("lunch"): vol.In([LUNCH_YES, LUNCH_NO, LUNCH_UNKNOWN]),
