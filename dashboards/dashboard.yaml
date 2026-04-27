@@ -101,8 +101,9 @@ sections:
         icon: mdi:timer-sand
         name: Time remaining
         card_layout: large
-        show_state: true
-        show_attribute: false
+        show_state: false
+        show_attribute: true
+        attribute: human_readable
         sub_button: []
         modules:
           - "!default"
