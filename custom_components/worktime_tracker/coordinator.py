@@ -188,6 +188,10 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                 break
 
         # Subscribe to person state changes
+        _LOGGER.info(
+            "Worktime: tracking person='%s', work_zone='%s' (zone_name='%s')",
+            self.person_entity, self.work_zone, self.work_zone_name,
+        )
         self._unsub_callbacks.append(
             async_track_state_change_event(
                 self.hass, [self.person_entity], self._handle_person_state_change
@@ -264,12 +268,21 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             return
 
         zone_name = self.work_zone_name
+        old_s = old_state.state if old_state else "None"
+        new_s = new_state.state
+        _LOGGER.debug(
+            "Worktime: person state change '%s' → '%s' (watching zone_name='%s')",
+            old_s, new_s, zone_name,
+        )
+
         was_at_work = bool(old_state and old_state.state == zone_name)
         is_at_work = new_state.state == zone_name
 
         if not was_at_work and is_at_work:
+            _LOGGER.info("Worktime: arrived at work zone (person state='%s')", new_s)
             await self.async_register_arrival(at_time=dt_util.now())
         elif was_at_work and not is_at_work:
+            _LOGGER.info("Worktime: left work zone (person state='%s')", new_s)
             await self.async_register_departure(at_time=dt_util.now())
 
     async def _handle_lunch_time(self, now: datetime) -> None:
