@@ -36,6 +36,7 @@ async def async_setup_entry(
         TimeRemainingSensor(coordinator, entry),
         StatusSensor(coordinator, entry),
         LunchStatusSensor(coordinator, entry),
+        *[WeekdaySensor(coordinator, entry, i) for i in range(5)],
     ]
     async_add_entities(sensors)
 
@@ -95,7 +96,9 @@ class DepartureTimeSensor(_BaseSensor):
 
     @property
     def native_value(self) -> str:
-        return _fmt(self.coordinator.departure)
+        if self.coordinator.departure is not None:
+            return _fmt(self.coordinator.departure)
+        return _fmt(self.coordinator.planned_end)
 
 
 class HoursTodaySensor(_BaseSensor):
@@ -206,6 +209,72 @@ class LunchStatusSensor(_BaseSensor):
     @property
     def native_value(self) -> str:
         return self.coordinator.lunch_status
+
+
+_WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+_WEEKDAY_KEYS = ["monday", "tuesday", "wednesday", "thursday", "friday"]
+
+
+class WeekdaySensor(_BaseSensor):
+    """One sensor per weekday (Mon–Fri) showing hours + times for the current week."""
+
+    _attr_native_unit_of_measurement = UnitOfTime.HOURS
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = "mdi:calendar-today"
+    _attr_suggested_display_precision = 2
+
+    def __init__(self, coordinator: WorktimeCoordinator, entry: ConfigEntry, weekday_index: int) -> None:
+        self._weekday_index = weekday_index
+        self._key = _WEEKDAY_KEYS[weekday_index]
+        self._attr_name = _WEEKDAY_NAMES[weekday_index]
+        super().__init__(coordinator, entry)
+
+    def _day_entry(self) -> dict[str, Any]:
+        today = dt_util.now().date()
+        monday = today - timedelta(days=today.weekday())
+        target = monday + timedelta(days=self._weekday_index)
+        target_iso = target.isoformat()
+
+        for e in self.coordinator.history:
+            if e.get("date") == target_iso:
+                return e
+
+        if target == today and self.coordinator.arrival is not None:
+            return {
+                "date": target_iso,
+                "arrival": self.coordinator.arrival.isoformat(),
+                "planned_end": self.coordinator.planned_end.isoformat() if self.coordinator.planned_end else None,
+                "departure": self.coordinator.departure.isoformat() if self.coordinator.departure else None,
+                "hours": self.coordinator.hours_worked_today(),
+                "lunch": self.coordinator.lunch_status,
+            }
+        return {}
+
+    @property
+    def native_value(self) -> float:
+        return round(float(self._day_entry().get("hours", 0.0)), 2)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        e = self._day_entry()
+        if not e:
+            return {"arrival": "—", "departure": "—", "lunch": "—", "date": "—"}
+
+        def _parse(iso: str | None) -> str:
+            if not iso:
+                return "—"
+            try:
+                return dt_util.as_local(datetime.fromisoformat(iso)).strftime("%H:%M")
+            except (ValueError, TypeError):
+                return "—"
+
+        departure = _parse(e.get("departure")) if e.get("departure") else _parse(e.get("planned_end"))
+        return {
+            "date": e.get("date", "—"),
+            "arrival": _parse(e.get("arrival")),
+            "departure": departure,
+            "lunch": e.get("lunch", "—"),
+        }
 
 
 def _week_breakdown(coordinator: WorktimeCoordinator, weeks_back: int = 0) -> list[dict[str, Any]]:
