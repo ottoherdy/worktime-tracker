@@ -36,7 +36,8 @@ async def async_setup_entry(
         TimeRemainingSensor(coordinator, entry),
         StatusSensor(coordinator, entry),
         LunchStatusSensor(coordinator, entry),
-        *[WeekdaySensor(coordinator, entry, i) for i in range(5)],
+        *[WeekdaySensor(coordinator, entry, i, weeks_back=0) for i in range(5)],
+        *[WeekdaySensor(coordinator, entry, i, weeks_back=1) for i in range(5)],
     ]
     async_add_entities(sensors)
 
@@ -223,15 +224,17 @@ class WeekdaySensor(_BaseSensor):
     _attr_icon = "mdi:calendar-today"
     _attr_suggested_display_precision = 2
 
-    def __init__(self, coordinator: WorktimeCoordinator, entry: ConfigEntry, weekday_index: int) -> None:
+    def __init__(self, coordinator: WorktimeCoordinator, entry: ConfigEntry, weekday_index: int, weeks_back: int = 0) -> None:
         self._weekday_index = weekday_index
-        self._key = _WEEKDAY_KEYS[weekday_index]
-        self._attr_name = _WEEKDAY_NAMES[weekday_index]
+        self._weeks_back = weeks_back
+        prefix = "last_" if weeks_back else ""
+        self._key = f"{prefix}{_WEEKDAY_KEYS[weekday_index]}"
+        self._attr_name = f"Last {_WEEKDAY_NAMES[weekday_index]}" if weeks_back else _WEEKDAY_NAMES[weekday_index]
         super().__init__(coordinator, entry)
 
     def _day_entry(self) -> dict[str, Any]:
         today = dt_util.now().date()
-        monday = today - timedelta(days=today.weekday())
+        monday = today - timedelta(days=today.weekday()) - timedelta(weeks=self._weeks_back)
         target = monday + timedelta(days=self._weekday_index)
         target_iso = target.isoformat()
 
