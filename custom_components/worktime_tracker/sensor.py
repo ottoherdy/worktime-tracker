@@ -348,11 +348,16 @@ class WeekdaySensor(_BaseSensor):
                 return "—"
 
         departure = _parse(e.get("departure")) if e.get("departure") else _parse(e.get("planned_end"))
+        hours = float(e.get("hours", 0.0))
+        total_min = round(hours * 60)
+        h, m = divmod(total_min, 60)
+        human = f"{h}h {m:02d}m" if total_min else "—"
         return {
             "date": e.get("date", "—"),
             "arrival": _parse(e.get("arrival")),
             "departure": departure,
             "lunch": e.get("lunch", "—"),
+            "human_readable": human,
         }
 
 
