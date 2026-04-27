@@ -68,13 +68,14 @@ sections:
         show_state: false
         show_attribute: true
         attribute: arrival
-        sub_button: []
         modules:
           - "!default"
         grid_options:
           columns: 4
           rows: 1
         tap_action:
+          action: more-info
+        hold_action:
           action: more-info
       - type: custom:bubble-card
         card_type: button
@@ -85,13 +86,14 @@ sections:
         show_state: false
         show_attribute: true
         attribute: departure
-        sub_button: []
         modules:
           - "!default"
         grid_options:
           columns: 4
           rows: 1
         tap_action:
+          action: more-info
+        hold_action:
           action: more-info
       - type: custom:bubble-card
         card_type: button
@@ -102,13 +104,14 @@ sections:
         show_state: false
         show_attribute: true
         attribute: time_remaining
-        sub_button: []
         modules:
           - "!default"
         grid_options:
           columns: 4
           rows: 1
         tap_action:
+          action: more-info
+        hold_action:
           action: more-info
       - type: custom:bubble-card
         card_type: button
@@ -119,13 +122,14 @@ sections:
         show_state: false
         show_attribute: true
         attribute: lunch
-        sub_button: []
         modules:
           - "!default"
         grid_options:
           columns: 4
           rows: 1
         tap_action:
+          action: more-info
+        hold_action:
           action: more-info
 
   # --- Quick actions ---
@@ -137,98 +141,110 @@ sections:
         icon: mdi:lightning-bolt
       - type: custom:bubble-card
         card_type: button
+        entity: sensor.worktime_tracker_status
         icon: mdi:login
         name: Log arrival
         card_layout: large
         show_state: false
-        sub_button: []
         modules:
           - "!default"
         grid_options:
           columns: 4
           rows: 1
         tap_action:
-          action: perform-action
-          perform_action: worktime_tracker.log_arrival
+          action: call-service
+          service: worktime_tracker.log_arrival
+        hold_action:
+          action: more-info
       - type: custom:bubble-card
         card_type: button
+        entity: sensor.worktime_tracker_status
         icon: mdi:logout
         name: Log departure
         card_layout: large
         show_state: false
-        sub_button: []
         modules:
           - "!default"
         grid_options:
           columns: 4
           rows: 1
         tap_action:
-          action: perform-action
-          perform_action: worktime_tracker.log_departure
+          action: call-service
+          service: worktime_tracker.log_departure
+        hold_action:
+          action: more-info
       - type: custom:bubble-card
         card_type: button
+        entity: sensor.worktime_tracker_status
         icon: mdi:food
         name: Lunch — Yes
         card_layout: large
         show_state: false
-        sub_button: []
         modules:
           - "!default"
         grid_options:
           columns: 4
           rows: 1
         tap_action:
-          action: perform-action
-          perform_action: worktime_tracker.set_lunch
-          data:
+          action: call-service
+          service: worktime_tracker.set_lunch
+          service_data:
             had_lunch: true
+        hold_action:
+          action: more-info
       - type: custom:bubble-card
         card_type: button
+        entity: sensor.worktime_tracker_status
         icon: mdi:food-off
         name: Lunch — No
         card_layout: large
         show_state: false
-        sub_button: []
         modules:
           - "!default"
         grid_options:
           columns: 4
           rows: 1
         tap_action:
-          action: perform-action
-          perform_action: worktime_tracker.set_lunch
-          data:
+          action: call-service
+          service: worktime_tracker.set_lunch
+          service_data:
             had_lunch: false
+        hold_action:
+          action: more-info
       - type: custom:bubble-card
         card_type: button
+        entity: sensor.worktime_tracker_status
         icon: mdi:google-spreadsheet
         name: Send to Sheets
         card_layout: large
         show_state: false
-        sub_button: []
         modules:
           - "!default"
         grid_options:
           columns: 4
           rows: 1
         tap_action:
-          action: perform-action
-          perform_action: worktime_tracker.export_history
+          action: call-service
+          service: worktime_tracker.export_history
+        hold_action:
+          action: more-info
       - type: custom:bubble-card
         card_type: button
+        entity: sensor.worktime_tracker_status
         icon: mdi:restart
         name: Reset today
         card_layout: large
         show_state: false
-        sub_button: []
         modules:
           - "!default"
         grid_options:
           columns: 4
           rows: 1
         tap_action:
-          action: perform-action
-          perform_action: worktime_tracker.reset_today
+          action: call-service
+          service: worktime_tracker.reset_today
+        hold_action:
+          action: more-info
 
   # --- This week ---
   - type: grid
@@ -241,7 +257,7 @@ sections:
           - type: entity
             entity: sensor.worktime_tracker_this_week
           - type: template
-            content: "{{ state_attr('sensor.worktime_tracker_this_week', 'overtime') | round(2) }}h OT"
+            content: "OT: {{ state_attr('sensor.worktime_tracker_this_week', 'overtime') | round(2) }}h"
       - type: markdown
         content: >
           {% set days = state_attr('sensor.worktime_tracker_this_week', 'days') or [] %}
@@ -264,7 +280,7 @@ sections:
           - type: entity
             entity: sensor.worktime_tracker_last_week
           - type: template
-            content: "{{ state_attr('sensor.worktime_tracker_last_week', 'overtime') | round(2) }}h OT"
+            content: "OT: {{ state_attr('sensor.worktime_tracker_last_week', 'overtime') | round(2) }}h"
       - type: markdown
         content: >
           {% set days = state_attr('sensor.worktime_tracker_last_week', 'days') or [] %}

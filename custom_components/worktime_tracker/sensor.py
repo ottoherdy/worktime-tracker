@@ -18,7 +18,15 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
-from .coordinator import WorktimeCoordinator, _hours_to_human
+from .coordinator import WorktimeCoordinator
+
+
+def _hours_to_human(hours: float) -> str:
+    total_min = round(hours * 60)
+    if total_min == 0:
+        return "—"
+    h, m = divmod(total_min, 60)
+    return f"{h}h {m:02d}m"
 
 
 def _device(entry: ConfigEntry, suffix: str, name: str, model: str) -> DeviceInfo:
