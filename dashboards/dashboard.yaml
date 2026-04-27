@@ -410,3 +410,105 @@ sections:
             stroke_width: 2
             data_generator: |
               return [{x:'Mon',y:8},{x:'Tue',y:8},{x:'Wed',y:8},{x:'Thu',y:8},{x:'Fri',y:8}];
+
+  # --- Edit day ---
+  - type: grid
+    cards:
+      - type: heading
+        heading: Edit day
+        heading_style: title
+        icon: mdi:calendar-edit
+      - type: custom:bubble-card
+        card_type: button
+        entity: text.worktime_tracker_edit_date
+        icon: mdi:calendar-edit
+        name: Date
+        card_layout: large
+        show_state: true
+        show_attribute: false
+        sub_button: []
+        modules:
+          - "!default"
+        grid_options:
+          columns: 4
+          rows: 1
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: custom:bubble-card
+        card_type: button
+        entity: text.worktime_tracker_edit_arrival
+        icon: mdi:login
+        name: Arrival
+        card_layout: large
+        show_state: true
+        show_attribute: false
+        sub_button: []
+        modules:
+          - "!default"
+        grid_options:
+          columns: 4
+          rows: 1
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: custom:bubble-card
+        card_type: button
+        entity: text.worktime_tracker_edit_departure
+        icon: mdi:logout
+        name: Departure
+        card_layout: large
+        show_state: true
+        show_attribute: false
+        sub_button: []
+        modules:
+          - "!default"
+        grid_options:
+          columns: 4
+          rows: 1
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: custom:bubble-card
+        card_type: button
+        entity: select.worktime_tracker_edit_lunch
+        icon: mdi:food
+        name: Lunch
+        card_layout: large
+        show_state: true
+        show_attribute: false
+        sub_button: []
+        modules:
+          - "!default"
+        grid_options:
+          columns: 4
+          rows: 1
+        tap_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: custom:bubble-card
+        card_type: button
+        icon: mdi:content-save
+        name: Save changes
+        card_layout: large
+        show_state: false
+        sub_button: []
+        modules:
+          - "!default"
+        grid_options:
+          columns: 8
+          rows: 1
+        tap_action:
+          action: perform-action
+          perform_action: worktime_tracker.edit_day
+          data:
+            date: "{{ states('text.worktime_tracker_edit_date') }}"
+            arrival: "{{ states('text.worktime_tracker_edit_arrival') or none }}"
+            departure: "{{ states('text.worktime_tracker_edit_departure') or none }}"
+            lunch: "{{ states('select.worktime_tracker_edit_lunch') }}"
+        hold_action:
+          action: more-info

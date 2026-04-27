@@ -25,7 +25,7 @@ from .coordinator import WorktimeCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[str] = ["sensor", "binary_sensor"]
+PLATFORMS: list[str] = ["sensor", "binary_sensor", "text", "select"]
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
