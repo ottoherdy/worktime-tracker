@@ -25,6 +25,9 @@ from homeassistant.util import dt as dt_util
 from .const import (
     ACTION_LUNCH_NO,
     ACTION_LUNCH_YES,
+    ACTION_TIMEREPORT_NO,
+    ACTION_TIMEREPORT_YES,
+    NOTIFICATION_TAG_TIMEREPORT,
     CONF_AUTO_LUNCH_DEFAULT,
     CONF_LUNCH_DEDUCTION,
     CONF_LUNCH_TIME,
@@ -208,6 +211,13 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             )
         )
 
+        # Time report reminder every Friday at 16:00
+        self._unsub_callbacks.append(
+            async_track_time_change(
+                self.hass, self._handle_timereport_time, hour=16, minute=0, second=0
+            )
+        )
+
         # Initial state check – maybe person is already at work
         state = self.hass.states.get(self.person_entity)
         if state and state.state == self.work_zone_name and self.arrival is None:
@@ -275,12 +285,41 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         self._reset_day_state()
         self.async_set_updated_data(self.snapshot())
 
+    async def _handle_timereport_time(self, now: datetime) -> None:
+        """Triggered every Friday at 16:00."""
+        if now.weekday() != 4:  # 4 = Friday
+            return
+        svc = self.notify_service
+        if not svc:
+            return
+        try:
+            await self.hass.services.async_call(
+                "notify",
+                svc,
+                {
+                    "title": "Time report",
+                    "message": "Have you submitted your time report?",
+                    "data": {
+                        "tag": NOTIFICATION_TAG_TIMEREPORT,
+                        "actions": [
+                            {"action": ACTION_TIMEREPORT_YES, "title": "Yes, done"},
+                            {"action": ACTION_TIMEREPORT_NO, "title": "Not yet"},
+                        ],
+                    },
+                },
+                blocking=False,
+            )
+        except Exception as exc:  # pylint: disable=broad-except
+            _LOGGER.error("Worktime: failed to send time report notification: %s", exc)
+
     async def _handle_notification_action(self, event: Event) -> None:
         action = event.data.get("action")
         if action == ACTION_LUNCH_YES:
             await self.async_set_lunch(LUNCH_YES)
         elif action == ACTION_LUNCH_NO:
             await self.async_set_lunch(LUNCH_NO)
+        elif action == ACTION_TIMEREPORT_YES:
+            await self._async_append_to_sheet()
 
     # ------------------------------------------------------------------
     # Public actions
@@ -404,8 +443,8 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         if not svc:
             _LOGGER.warning("Worktime: lunch time but no notify service configured")
             return
-        message = "Har du haft lunch idag?"
-        title = "Lunchcheck"
+        message = "Did you have lunch today?"
+        title = "Lunch check"
         try:
             await self.hass.services.async_call(
                 "notify",
@@ -416,8 +455,8 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                     "data": {
                         "tag": NOTIFICATION_TAG,
                         "actions": [
-                            {"action": ACTION_LUNCH_YES, "title": "Ja, haft lunch"},
-                            {"action": ACTION_LUNCH_NO, "title": "Nej"},
+                            {"action": ACTION_LUNCH_YES, "title": "Yes"},
+                            {"action": ACTION_LUNCH_NO, "title": "No"},
                         ],
                     },
                 },
@@ -463,8 +502,33 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                 total += self.hours_worked_today()
         return round(total, 2)
 
+    @property
+    def daily_net_target(self) -> float:
+        return round(self.workday_hours - self.lunch_deduction, 2)
+
+    def overtime_today(self) -> float:
+        return round(self.hours_worked_today() - self.daily_net_target, 2)
+
     def overtime_this_week(self) -> float:
-        return round(self.hours_worked_in_week() - self.weekly_target, 2)
+        """Overtime vs expected hours for days worked so far this week."""
+        today = dt_util.now().date()
+        monday = today - timedelta(days=today.weekday())
+        days_with_work = 0
+        for offset in range(5):
+            d = monday + timedelta(days=offset)
+            if d > today:
+                break
+            d_iso = d.isoformat()
+            has_work = any(
+                e.get("date") == d_iso and float(e.get("hours", 0)) > 0
+                for e in self.history
+            )
+            if not has_work and d == today and self.arrival is not None:
+                has_work = True
+            if has_work:
+                days_with_work += 1
+        expected = days_with_work * self.daily_net_target
+        return round(self.hours_worked_in_week() - expected, 2)
 
     def time_remaining_seconds(self) -> int:
         if self.arrival is None or self.planned_end is None:
@@ -491,6 +555,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             "lunch": self.lunch_status,
             "hours_today": self.hours_worked_today(),
             "hours_week": self.hours_worked_in_week(),
+            "overtime_today": self.overtime_today(),
             "overtime_week": self.overtime_this_week(),
             "remaining_seconds": self.time_remaining_seconds(),
             "status": self.status(),
@@ -536,12 +601,11 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         self.hass.bus.async_fire(EVENT_HISTORY_UPDATED, {"date": today_iso})
 
     async def _async_log_today_to_history(self) -> None:
-        """Called on departure: write final values + send to Sheets."""
+        """Called on departure: write final values to history."""
         if self.day_logged:
             return
         await self._async_save_today()
         self.day_logged = True
-        await self._async_append_to_sheet()
 
     def _format_time(self, dt_obj: datetime | None) -> str:
         if not dt_obj:

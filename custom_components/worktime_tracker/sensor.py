@@ -32,6 +32,7 @@ async def async_setup_entry(
         DepartureTimeSensor(coordinator, entry),
         HoursTodaySensor(coordinator, entry),
         HoursWeekSensor(coordinator, entry),
+        OvertimeTodaySensor(coordinator, entry),
         OvertimeWeekSensor(coordinator, entry),
         TimeRemainingSensor(coordinator, entry),
         StatusSensor(coordinator, entry),
@@ -143,6 +144,20 @@ class HoursWeekSensor(_BaseSensor):
             "last_week": last_week,
             "recent_days": recent,
         }
+
+
+class OvertimeTodaySensor(_BaseSensor):
+    _key = "overtime_today"
+    _attr_translation_key = "overtime_today"
+    _attr_name = "Overtime today"
+    _attr_native_unit_of_measurement = UnitOfTime.HOURS
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = "mdi:clock-plus-outline"
+    _attr_suggested_display_precision = 2
+
+    @property
+    def native_value(self) -> float:
+        return self.coordinator.overtime_today()
 
 
 class OvertimeWeekSensor(_BaseSensor):
