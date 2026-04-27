@@ -233,7 +233,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
 
         # Initial state check – maybe person is already at work
         state = self.hass.states.get(self.person_entity)
-        if state and state.state == self.work_zone_name and self.arrival is None:
+        if state and state.state.lower() == self.work_zone_name.lower() and self.arrival is None:
             await self.async_register_arrival(at_time=dt_util.now(), initial=True)
 
         await self.async_request_refresh()
@@ -275,8 +275,8 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             old_s, new_s, zone_name,
         )
 
-        was_at_work = bool(old_state and old_state.state == zone_name)
-        is_at_work = new_state.state == zone_name
+        was_at_work = bool(old_state and old_state.state.lower() == zone_name.lower())
+        is_at_work = new_state.state.lower() == zone_name.lower()
 
         if not was_at_work and is_at_work:
             _LOGGER.info("Worktime: arrived at work zone (person state='%s')", new_s)
@@ -476,7 +476,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
     # ------------------------------------------------------------------
     def _is_at_work(self) -> bool:
         state = self.hass.states.get(self.person_entity)
-        return bool(state and state.state == self.work_zone_name)
+        return bool(state and state.state.lower() == self.work_zone_name.lower())
 
     def _recompute_planned_end(self) -> None:
         if self.arrival is None:
