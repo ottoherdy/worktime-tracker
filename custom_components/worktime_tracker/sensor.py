@@ -61,8 +61,8 @@ class _Base(CoordinatorEntity[WorktimeCoordinator], SensorEntity):
 
 
 class TodaySensor(_Base):
-    _key = "today"
-    _attr_name = "Today"
+    _key = "hours_today"
+    _attr_name = "Hours today"
     _attr_native_unit_of_measurement = UnitOfTime.HOURS
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:clock-outline"
@@ -123,8 +123,8 @@ class StatusSensor(_Base):
 
 
 class ThisWeekSensor(_Base):
-    _key = "this_week"
-    _attr_name = "This week"
+    _key = "hours_this_week"
+    _attr_name = "Hours this week"
     _attr_native_unit_of_measurement = UnitOfTime.HOURS
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:calendar-week"
@@ -148,8 +148,8 @@ class ThisWeekSensor(_Base):
 
 
 class LastWeekSensor(_Base):
-    _key = "last_week"
-    _attr_name = "Last week"
+    _key = "hours_last_week"
+    _attr_name = "Hours last week"
     _attr_native_unit_of_measurement = UnitOfTime.HOURS
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:calendar-week"

@@ -58,10 +58,10 @@ sections:
           - type: entity
             entity: sensor.worktime_tracker_status
           - type: entity
-            entity: sensor.worktime_tracker_today
+            entity: sensor.worktime_tracker_hours_today
       - type: custom:bubble-card
         card_type: button
-        entity: sensor.worktime_tracker_today
+        entity: sensor.worktime_tracker_hours_today
         icon: mdi:login
         name: Arrival
         card_layout: large
@@ -79,7 +79,7 @@ sections:
           action: more-info
       - type: custom:bubble-card
         card_type: button
-        entity: sensor.worktime_tracker_today
+        entity: sensor.worktime_tracker_hours_today
         icon: mdi:logout
         name: Departure
         card_layout: large
@@ -97,7 +97,7 @@ sections:
           action: more-info
       - type: custom:bubble-card
         card_type: button
-        entity: sensor.worktime_tracker_today
+        entity: sensor.worktime_tracker_hours_today
         icon: mdi:timer-sand
         name: Time remaining
         card_layout: large
@@ -115,7 +115,7 @@ sections:
           action: more-info
       - type: custom:bubble-card
         card_type: button
-        entity: sensor.worktime_tracker_today
+        entity: sensor.worktime_tracker_hours_today
         icon: mdi:food
         name: Lunch
         card_layout: large
@@ -255,12 +255,12 @@ sections:
         icon: mdi:calendar-week
         badges:
           - type: entity
-            entity: sensor.worktime_tracker_this_week
+            entity: sensor.worktime_tracker_hours_this_week
           - type: template
-            content: "OT: {{ state_attr('sensor.worktime_tracker_this_week', 'overtime') | round(2) }}h"
+            content: "OT: {{ state_attr('sensor.worktime_tracker_hours_this_week', 'overtime') | round(2) }}h"
       - type: markdown
         content: >
-          {% set days = state_attr('sensor.worktime_tracker_this_week', 'days') or [] %}
+          {% set days = state_attr('sensor.worktime_tracker_hours_this_week', 'days') or [] %}
           {% for d in days %}
           **{{ d.weekday }}** &nbsp; {{ d.human_readable }}{% if d.arrival != '—' %} &nbsp;·&nbsp; {{ d.arrival }}–{{ d.departure }}{% endif %}
 
@@ -278,12 +278,12 @@ sections:
         icon: mdi:calendar-week-begin
         badges:
           - type: entity
-            entity: sensor.worktime_tracker_last_week
+            entity: sensor.worktime_tracker_hours_last_week
           - type: template
-            content: "OT: {{ state_attr('sensor.worktime_tracker_last_week', 'overtime') | round(2) }}h"
+            content: "OT: {{ state_attr('sensor.worktime_tracker_hours_last_week', 'overtime') | round(2) }}h"
       - type: markdown
         content: >
-          {% set days = state_attr('sensor.worktime_tracker_last_week', 'days') or [] %}
+          {% set days = state_attr('sensor.worktime_tracker_hours_last_week', 'days') or [] %}
           {% for d in days %}
           **{{ d.weekday }}** &nbsp; {{ d.human_readable }}{% if d.arrival != '—' %} &nbsp;·&nbsp; {{ d.arrival }}–{{ d.departure }}{% endif %}
 
@@ -325,21 +325,21 @@ sections:
             formatter: |
               EVAL:function(val) { return val ? val.toFixed(1) + 'h' : ''; }
         series:
-          - entity: sensor.worktime_tracker_this_week
+          - entity: sensor.worktime_tracker_hours_this_week
             name: This week
             type: column
             color: "#3B82F6"
             data_generator: |
               const days = entity.attributes.days || [];
               return days.map(d => ({ x: d.weekday, y: d.hours }));
-          - entity: sensor.worktime_tracker_last_week
+          - entity: sensor.worktime_tracker_hours_last_week
             name: Last week
             type: column
             color: "#9CA3AF"
             data_generator: |
               const days = entity.attributes.days || [];
               return days.map(d => ({ x: d.weekday, y: d.hours }));
-          - entity: sensor.worktime_tracker_this_week
+          - entity: sensor.worktime_tracker_hours_this_week
             name: 8h target
             type: line
             color: "#F97316"
