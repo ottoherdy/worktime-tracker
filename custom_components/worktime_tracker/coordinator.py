@@ -7,10 +7,19 @@ from datetime import date, datetime, time, timedelta
 from typing import Any
 
 _WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+_SHORT_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 
 def _round_quarter(hours: float) -> float:
     return math.ceil(hours * 4) / 4
+
+
+def _hours_to_human(hours: float) -> str:
+    total_min = round(hours * 60)
+    if total_min == 0:
+        return "—"
+    h, m = divmod(total_min, 60)
+    return f"{h}h {m:02d}m"
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant, State, callback
@@ -439,6 +448,9 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         self.async_set_updated_data(self.snapshot())
         _LOGGER.info("Worktime: edited day %s → %s", target_iso, entry)
 
+        # Push updated row to Sheets (marked as edited)
+        await self._async_append_to_sheet(entry=entry, edited=True)
+
     async def async_export_history(self) -> None:
         """Re-send today's entry to Google Sheets."""
         if self.arrival is None:
@@ -599,6 +611,59 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         expected = days_with_work * self.daily_net_target
         return round(self.hours_worked_in_week() - expected, 2)
 
+    def week_breakdown(self, weeks_back: int = 0) -> list[dict[str, Any]]:
+        """Return Mon–Fri data for the week offset by weeks_back."""
+        today = dt_util.now().date()
+        monday = today - timedelta(days=today.weekday()) - timedelta(weeks=weeks_back)
+        result = []
+        for offset in range(5):
+            d = monday + timedelta(days=offset)
+            d_iso = d.isoformat()
+            entry: dict[str, Any] | None = None
+            for e in self.history:
+                if e.get("date") == d_iso:
+                    entry = e
+                    break
+            if entry is None and d == today and self.arrival is not None:
+                entry = {
+                    "date": d_iso,
+                    "arrival": self.arrival.isoformat(),
+                    "planned_end": self.planned_end.isoformat() if self.planned_end else None,
+                    "departure": self.departure.isoformat() if self.departure else None,
+                    "lunch": self.lunch_status,
+                    "hours": self.hours_worked_today(),
+                }
+            if entry:
+                hours = float(entry.get("hours", 0.0))
+                def _p(iso: str | None) -> str:
+                    if not iso:
+                        return "—"
+                    try:
+                        return dt_util.as_local(datetime.fromisoformat(iso)).strftime("%H:%M")
+                    except Exception:
+                        return "—"
+                dep_iso = entry.get("departure") or entry.get("planned_end")
+                result.append({
+                    "date": d_iso,
+                    "weekday": _SHORT_DAYS[d.weekday()],
+                    "arrival": _p(entry.get("arrival")),
+                    "departure": _p(dep_iso),
+                    "lunch": entry.get("lunch", "—"),
+                    "hours": round(hours, 2),
+                    "human_readable": _hours_to_human(hours),
+                })
+            else:
+                result.append({
+                    "date": d_iso,
+                    "weekday": _SHORT_DAYS[d.weekday()],
+                    "arrival": "—",
+                    "departure": "—",
+                    "lunch": "—",
+                    "hours": 0.0,
+                    "human_readable": "—",
+                })
+        return result
+
     def time_remaining_seconds(self) -> int:
         if self.arrival is None or self.planned_end is None:
             return 0
@@ -682,8 +747,12 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         local = dt_util.as_local(dt_obj)
         return local.strftime("%H:%M")
 
-    async def _async_append_to_sheet(self) -> None:
-        """Append today's row to Google Sheets via the official integration."""
+    async def _async_append_to_sheet(
+        self,
+        entry: dict[str, Any] | None = None,
+        edited: bool = False,
+    ) -> None:
+        """Append a row to Google Sheets. Uses today's state when entry is None."""
         entry_id = self.sheets_entry_id
         if not entry_id:
             return
@@ -693,16 +762,35 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             )
             return
 
-        hours = self.hours_worked_today()
+        if entry is None:
+            target_date = self.current_date
+            arrival = self.arrival
+            planned_end = self.planned_end
+            departure = self.departure
+            lunch = self.lunch_status
+            hours = self.hours_worked_today()
+        else:
+            try:
+                target_date = date.fromisoformat(entry["date"])
+                arrival = datetime.fromisoformat(entry["arrival"]) if entry.get("arrival") else None
+                planned_end = datetime.fromisoformat(entry["planned_end"]) if entry.get("planned_end") else None
+                departure = datetime.fromisoformat(entry["departure"]) if entry.get("departure") else None
+                lunch = entry.get("lunch", LUNCH_UNKNOWN)
+                hours = float(entry.get("hours", 0.0))
+            except Exception as exc:  # pylint: disable=broad-except
+                _LOGGER.warning("Worktime: failed to parse entry for Sheets: %s", exc)
+                return
+
         row = {
-            "Date": self.current_date.isoformat(),
-            "Weekday": _WEEKDAYS[self.current_date.weekday()],
-            "Arrival": self._format_time(self.arrival),
-            "Planned end": self._format_time(self.planned_end),
-            "Departure": self._format_time(self.departure),
-            "Lunch": self.lunch_status,
+            "Date": target_date.isoformat(),
+            "Weekday": _WEEKDAYS[target_date.weekday()],
+            "Arrival": self._format_time(arrival),
+            "Planned end": self._format_time(planned_end),
+            "Departure": self._format_time(departure),
+            "Lunch": lunch,
             "Hours": hours,
             "Hours (rounded)": _round_quarter(hours),
+            "Edited": "yes" if edited else "no",
         }
         try:
             await self.hass.services.async_call(

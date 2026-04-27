@@ -42,59 +42,45 @@ Automatically tracks work hours in Home Assistant based on zone presence (person
 | `worktime_tracker.set_lunch` | Set lunch status (field: `had_lunch: true/false`) |
 | `worktime_tracker.reset_today` | Clear today's data and start over |
 | `worktime_tracker.export_history` | Send today's row to Google Sheets manually |
-| `worktime_tracker.edit_day` | Edit arrival, departure or lunch for any date (fields: `date`, `arrival`, `departure`, `lunch`) |
+| `worktime_tracker.edit_day` | Edit arrival, departure or lunch for any date (fields: `date`, `arrival` HH:MM, `departure` HH:MM, `lunch`). Automatically pushes the updated row to Sheets marked as "Edited: yes". |
 
 ---
 
-## Sensors
+## Sensors (4 total)
 
 ### Today device
 
-| Entity | Description |
-|---|---|
-| `sensor.worktime_tracker_arrival_time` | Arrival time (HH:MM or —) |
-| `sensor.worktime_tracker_planned_end_time` | Calculated end time based on arrival + workday hours |
-| `sensor.worktime_tracker_departure_time` | Departure time, or planned end if not yet departed |
-| `sensor.worktime_tracker_hours_today` | Hours worked today (float) |
-| `sensor.worktime_tracker_overtime_today` | Overtime today vs daily net target (float) |
-| `sensor.worktime_tracker_time_remaining` | Minutes remaining; attributes include `human_readable` (e.g. "1h 23m") and `seconds_remaining` |
-| `sensor.worktime_tracker_status` | Status enum: `off_duty` / `at_work` / `done` / `overtime` |
-| `sensor.worktime_tracker_lunch_status` | Lunch enum: `yes` / `no` / `unknown` |
-| `binary_sensor.worktime_tracker_at_work` | True when status is `at_work` or `overtime` |
-| `binary_sensor.worktime_tracker_day_complete` | True when status is `done` |
+| Entity | State | Key attributes |
+|---|---|---|
+| `sensor.worktime_tracker_today` | Hours today (float) | `arrival`, `departure`, `planned_end`, `lunch`, `human_readable` ("8h 45m"), `overtime`, `time_remaining`, `status` |
+| `sensor.worktime_tracker_status` | `off_duty` / `at_work` / `done` / `overtime` | — |
+| `binary_sensor.worktime_tracker_at_work` | True when at_work or overtime | — |
+| `binary_sensor.worktime_tracker_day_complete` | True when done | — |
 
 ### This Week device
 
-| Entity | Description |
-|---|---|
-| `sensor.worktime_tracker_hours_week` | Total hours this week; attributes include `this_week`, `last_week` (Mon–Fri breakdown) and `recent_days` (last 5 days with hours) |
-| `sensor.worktime_tracker_overtime_week` | Cumulative overtime this week vs days-worked × daily net target |
-| `sensor.worktime_tracker_monday` … `_friday` | Per-day hours; attributes: `date`, `arrival`, `departure`, `lunch`, `human_readable` (e.g. "8h 45m") |
+| Entity | State | Key attributes |
+|---|---|---|
+| `sensor.worktime_tracker_this_week` | Total hours this week (float) | `overtime`, `weekly_target`, `days` (Mon–Fri list) |
+
+Each item in `days`: `date`, `weekday` (Mon/Tue/…), `arrival`, `departure`, `lunch`, `hours`, `human_readable`
 
 ### Last Week device
 
-| Entity | Description |
-|---|---|
-| `sensor.worktime_tracker_hours_last_week` | Total hours last week |
-| `sensor.worktime_tracker_overtime_last_week` | Overtime last week |
-| `sensor.worktime_tracker_last_monday` … `_last_friday` | Per-day hours last week; same attributes as this-week sensors |
-
-### Edit Day device
-
-| Entity | Description |
-|---|---|
-| `text.worktime_tracker_edit_date` | Date field for the edit form (YYYY-MM-DD), pre-filled with today |
-| `text.worktime_tracker_edit_arrival` | Arrival field for the edit form (HH:MM) |
-| `text.worktime_tracker_edit_departure` | Departure field for the edit form (HH:MM) |
-| `select.worktime_tracker_edit_lunch` | Lunch field for the edit form (yes / no / unknown) |
+| Entity | State | Key attributes |
+|---|---|---|
+| `sensor.worktime_tracker_last_week` | Total hours last week (float) | `overtime`, `days` (Mon–Fri list, same structure) |
 
 ---
 
 ## Google Sheets export
 
-Columns written per row: `Date`, `Weekday`, `Arrival`, `Planned end`, `Departure`, `Lunch`, `Hours`, `Hours (rounded)` (rounded up to nearest quarter hour).
+Columns: `Date`, `Weekday`, `Arrival`, `Planned end`, `Departure`, `Lunch`, `Hours`, `Hours (rounded)`, `Edited`
 
-Export is **manual only** — triggered by `export_history` service or by answering Yes to the Friday time-report notification. It is not sent automatically on departure.
+- `Edited: no` for normal exports (manual or Friday notification)
+- `Edited: yes` when row was sent via `edit_day` service
+
+Export is **not** automatic on departure — triggered manually via `export_history` service or Friday notification.
 
 ---
 
@@ -102,23 +88,42 @@ Export is **manual only** — triggered by `export_history` service or by answer
 
 Built with `custom:bubble-card`. Sections:
 
-1. **Work time** — arrival, departure, time remaining (shown as "1h 23m"), lunch status
+1. **Work time** — arrival, departure, time remaining, lunch (all from `sensor.worktime_tracker_today` attributes)
 2. **Quick actions** — log arrival/departure, set lunch yes/no, send to Sheets, reset today
-3. **This week** — weekday sensors Mon–Fri with hours and times
-4. **Chart** — ApexCharts bar chart: this week vs last week + 8h target line
-5. **Edit day** — text/select helpers pre-filled via a script + Save button calling `edit_day`
-
-### Edit day flow
-
-1. Tap a weekday card → call script `worktime_pre_fill_edit_form` with the sensor entity — fills date/arrival/departure/lunch helpers automatically
-2. Adjust any value by tapping the helper card (opens more-info)
-3. Tap **Save changes** → calls `worktime_tracker.edit_day`
+3. **This week** — markdown card looping `sensor.worktime_tracker_this_week.attributes.days`
+4. **Last week** — same for last week
+5. **Chart** — ApexCharts bar chart: this week vs last week + 8h target line
 
 ---
 
-## Known requirements / open items
+## Edit day flow
 
-- Weekday cards should display hours as "8h 45m" (use `attribute: human_readable`)
-- Edit day form should be pre-filled when tapping a day (requires HA script `worktime_pre_fill_edit_form`)
-- Friday time-report notification only sends Sheets data if user confirms with Yes
-- No automatic Sheets export on departure
+1. Call `worktime_tracker.edit_day` with `date`, `arrival`, `departure`, `lunch`
+   - Via Developer Tools > Services, or
+   - Via an HA script with fields (create in Settings → Scripts):
+     ```yaml
+     alias: Edit worktime day
+     fields:
+       date:
+         description: Date to edit (YYYY-MM-DD, leave empty for today)
+         example: "2026-04-25"
+       arrival:
+         description: Arrival time (HH:MM)
+         example: "08:15"
+       departure:
+         description: Departure time (HH:MM)
+         example: "16:30"
+       lunch:
+         description: Lunch status (yes/no/unknown)
+         selector:
+           select:
+             options: [yes, no, unknown]
+     sequence:
+       - action: worktime_tracker.edit_day
+         data:
+           date: "{{ date }}"
+           arrival: "{{ arrival }}"
+           departure: "{{ departure }}"
+           lunch: "{{ lunch }}"
+     ```
+2. History is updated locally and the updated row is automatically pushed to Sheets (marked Edited: yes)

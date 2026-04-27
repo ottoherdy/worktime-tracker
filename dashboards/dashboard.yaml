@@ -47,7 +47,7 @@ cards: []
 icon: mdi:alpha-t-box
 sections:
 
-  # --- Status ---
+  # --- Today ---
   - type: grid
     cards:
       - type: heading
@@ -58,79 +58,74 @@ sections:
           - type: entity
             entity: sensor.worktime_tracker_status
           - type: entity
-            entity: sensor.worktime_tracker_hours_today
+            entity: sensor.worktime_tracker_today
       - type: custom:bubble-card
         card_type: button
-        entity: sensor.worktime_tracker_arrival_time
+        entity: sensor.worktime_tracker_today
         icon: mdi:login
         name: Arrival
         card_layout: large
-        show_state: true
-        show_attribute: false
+        show_state: false
+        show_attribute: true
+        attribute: arrival
         sub_button: []
         modules:
           - "!default"
         grid_options:
           columns: 4
           rows: 1
-        double_tap_action:
-          action: more-info
-        hold_action:
+        tap_action:
           action: more-info
       - type: custom:bubble-card
         card_type: button
-        entity: sensor.worktime_tracker_departure_time
+        entity: sensor.worktime_tracker_today
         icon: mdi:logout
         name: Departure
         card_layout: large
-        show_state: true
-        show_attribute: false
+        show_state: false
+        show_attribute: true
+        attribute: departure
         sub_button: []
         modules:
           - "!default"
         grid_options:
           columns: 4
           rows: 1
-        double_tap_action:
-          action: more-info
-        hold_action:
+        tap_action:
           action: more-info
       - type: custom:bubble-card
         card_type: button
-        entity: sensor.worktime_tracker_time_remaining
+        entity: sensor.worktime_tracker_today
         icon: mdi:timer-sand
         name: Time remaining
         card_layout: large
         show_state: false
         show_attribute: true
-        attribute: human_readable
+        attribute: time_remaining
         sub_button: []
         modules:
           - "!default"
         grid_options:
           columns: 4
           rows: 1
-        double_tap_action:
-          action: more-info
-        hold_action:
+        tap_action:
           action: more-info
       - type: custom:bubble-card
         card_type: button
-        entity: sensor.worktime_tracker_lunch_status
+        entity: sensor.worktime_tracker_today
         icon: mdi:food
         name: Lunch
         card_layout: large
-        show_state: true
-        show_attribute: false
+        show_state: false
+        show_attribute: true
+        attribute: lunch
         sub_button: []
         modules:
           - "!default"
         grid_options:
           columns: 4
           rows: 1
-        double_tap_action:
-          action: more-info
-        hold_action:
+        tap_action:
           action: more-info
 
   # --- Quick actions ---
@@ -153,10 +148,8 @@ sections:
           columns: 4
           rows: 1
         tap_action:
-          action: call-service
-          service: worktime_tracker.log_arrival
-        hold_action:
-          action: more-info
+          action: perform-action
+          perform_action: worktime_tracker.log_arrival
       - type: custom:bubble-card
         card_type: button
         icon: mdi:logout
@@ -170,10 +163,8 @@ sections:
           columns: 4
           rows: 1
         tap_action:
-          action: call-service
-          service: worktime_tracker.log_departure
-        hold_action:
-          action: more-info
+          action: perform-action
+          perform_action: worktime_tracker.log_departure
       - type: custom:bubble-card
         card_type: button
         icon: mdi:food
@@ -187,12 +178,10 @@ sections:
           columns: 4
           rows: 1
         tap_action:
-          action: call-service
-          service: worktime_tracker.set_lunch
-          service_data:
+          action: perform-action
+          perform_action: worktime_tracker.set_lunch
+          data:
             had_lunch: true
-        hold_action:
-          action: more-info
       - type: custom:bubble-card
         card_type: button
         icon: mdi:food-off
@@ -206,12 +195,10 @@ sections:
           columns: 4
           rows: 1
         tap_action:
-          action: call-service
-          service: worktime_tracker.set_lunch
-          service_data:
+          action: perform-action
+          perform_action: worktime_tracker.set_lunch
+          data:
             had_lunch: false
-        hold_action:
-          action: more-info
       - type: custom:bubble-card
         card_type: button
         icon: mdi:google-spreadsheet
@@ -225,10 +212,8 @@ sections:
           columns: 4
           rows: 1
         tap_action:
-          action: call-service
-          service: worktime_tracker.export_history
-        hold_action:
-          action: more-info
+          action: perform-action
+          perform_action: worktime_tracker.export_history
       - type: custom:bubble-card
         card_type: button
         icon: mdi:restart
@@ -242,10 +227,8 @@ sections:
           columns: 4
           rows: 1
         tap_action:
-          action: call-service
-          service: worktime_tracker.reset_today
-        hold_action:
-          action: more-info
+          action: perform-action
+          perform_action: worktime_tracker.reset_today
 
   # --- This week ---
   - type: grid
@@ -256,99 +239,42 @@ sections:
         icon: mdi:calendar-week
         badges:
           - type: entity
-            entity: sensor.worktime_tracker_hours_week
+            entity: sensor.worktime_tracker_this_week
+          - type: template
+            content: "{{ state_attr('sensor.worktime_tracker_this_week', 'overtime') | round(2) }}h OT"
+      - type: markdown
+        content: >
+          {% set days = state_attr('sensor.worktime_tracker_this_week', 'days') or [] %}
+          {% for d in days %}
+          **{{ d.weekday }}** &nbsp; {{ d.human_readable }}{% if d.arrival != '—' %} &nbsp;·&nbsp; {{ d.arrival }}–{{ d.departure }}{% endif %}
+
+          {% endfor %}
+        grid_options:
+          columns: 8
+          rows: 3
+
+  # --- Last week ---
+  - type: grid
+    cards:
+      - type: heading
+        heading: Last week
+        heading_style: title
+        icon: mdi:calendar-week-begin
+        badges:
           - type: entity
-            entity: sensor.worktime_tracker_overtime_week
-      - type: custom:bubble-card
-        card_type: button
-        entity: sensor.worktime_tracker_monday
-        icon: mdi:calendar-today
-        name: Monday
-        card_layout: large
-        show_state: true
-        show_attribute: false
-        sub_button: []
-        modules:
-          - "!default"
+            entity: sensor.worktime_tracker_last_week
+          - type: template
+            content: "{{ state_attr('sensor.worktime_tracker_last_week', 'overtime') | round(2) }}h OT"
+      - type: markdown
+        content: >
+          {% set days = state_attr('sensor.worktime_tracker_last_week', 'days') or [] %}
+          {% for d in days %}
+          **{{ d.weekday }}** &nbsp; {{ d.human_readable }}{% if d.arrival != '—' %} &nbsp;·&nbsp; {{ d.arrival }}–{{ d.departure }}{% endif %}
+
+          {% endfor %}
         grid_options:
-          columns: 4
-          rows: 1
-        double_tap_action:
-          action: more-info
-        hold_action:
-          action: more-info
-      - type: custom:bubble-card
-        card_type: button
-        entity: sensor.worktime_tracker_tuesday
-        icon: mdi:calendar-today
-        name: Tuesday
-        card_layout: large
-        show_state: true
-        show_attribute: false
-        sub_button: []
-        modules:
-          - "!default"
-        grid_options:
-          columns: 4
-          rows: 1
-        double_tap_action:
-          action: more-info
-        hold_action:
-          action: more-info
-      - type: custom:bubble-card
-        card_type: button
-        entity: sensor.worktime_tracker_wednesday
-        icon: mdi:calendar-today
-        name: Wednesday
-        card_layout: large
-        show_state: true
-        show_attribute: false
-        sub_button: []
-        modules:
-          - "!default"
-        grid_options:
-          columns: 4
-          rows: 1
-        double_tap_action:
-          action: more-info
-        hold_action:
-          action: more-info
-      - type: custom:bubble-card
-        card_type: button
-        entity: sensor.worktime_tracker_thursday
-        icon: mdi:calendar-today
-        name: Thursday
-        card_layout: large
-        show_state: true
-        show_attribute: false
-        sub_button: []
-        modules:
-          - "!default"
-        grid_options:
-          columns: 4
-          rows: 1
-        double_tap_action:
-          action: more-info
-        hold_action:
-          action: more-info
-      - type: custom:bubble-card
-        card_type: button
-        entity: sensor.worktime_tracker_friday
-        icon: mdi:calendar-today
-        name: Friday
-        card_layout: large
-        show_state: true
-        show_attribute: false
-        sub_button: []
-        modules:
-          - "!default"
-        grid_options:
-          columns: 4
-          rows: 1
-        double_tap_action:
-          action: more-info
-        hold_action:
-          action: more-info
+          columns: 8
+          rows: 3
 
   # --- Chart ---
   - type: grid
@@ -370,12 +296,6 @@ sections:
               borderRadius: 4
           xaxis:
             type: category
-            categories:
-              - Mon
-              - Tue
-              - Wed
-              - Thu
-              - Fri
           yaxis:
             min: 0
             max: 12
@@ -389,126 +309,24 @@ sections:
             formatter: |
               EVAL:function(val) { return val ? val.toFixed(1) + 'h' : ''; }
         series:
-          - entity: sensor.worktime_tracker_hours_week
+          - entity: sensor.worktime_tracker_this_week
             name: This week
             type: column
             color: "#3B82F6"
             data_generator: |
-              const days = entity.attributes.this_week || [];
+              const days = entity.attributes.days || [];
               return days.map(d => ({ x: d.weekday, y: d.hours }));
-          - entity: sensor.worktime_tracker_hours_week
+          - entity: sensor.worktime_tracker_last_week
             name: Last week
             type: column
             color: "#9CA3AF"
             data_generator: |
-              const days = entity.attributes.last_week || [];
+              const days = entity.attributes.days || [];
               return days.map(d => ({ x: d.weekday, y: d.hours }));
-          - entity: sensor.worktime_tracker_hours_week
+          - entity: sensor.worktime_tracker_this_week
             name: 8h target
             type: line
             color: "#F97316"
             stroke_width: 2
             data_generator: |
               return [{x:'Mon',y:8},{x:'Tue',y:8},{x:'Wed',y:8},{x:'Thu',y:8},{x:'Fri',y:8}];
-
-  # --- Edit day ---
-  - type: grid
-    cards:
-      - type: heading
-        heading: Edit day
-        heading_style: title
-        icon: mdi:calendar-edit
-      - type: custom:bubble-card
-        card_type: button
-        entity: text.worktime_tracker_edit_date
-        icon: mdi:calendar-edit
-        name: Date
-        card_layout: large
-        show_state: true
-        show_attribute: false
-        sub_button: []
-        modules:
-          - "!default"
-        grid_options:
-          columns: 4
-          rows: 1
-        tap_action:
-          action: more-info
-        hold_action:
-          action: more-info
-      - type: custom:bubble-card
-        card_type: button
-        entity: text.worktime_tracker_edit_arrival
-        icon: mdi:login
-        name: Arrival
-        card_layout: large
-        show_state: true
-        show_attribute: false
-        sub_button: []
-        modules:
-          - "!default"
-        grid_options:
-          columns: 4
-          rows: 1
-        tap_action:
-          action: more-info
-        hold_action:
-          action: more-info
-      - type: custom:bubble-card
-        card_type: button
-        entity: text.worktime_tracker_edit_departure
-        icon: mdi:logout
-        name: Departure
-        card_layout: large
-        show_state: true
-        show_attribute: false
-        sub_button: []
-        modules:
-          - "!default"
-        grid_options:
-          columns: 4
-          rows: 1
-        tap_action:
-          action: more-info
-        hold_action:
-          action: more-info
-      - type: custom:bubble-card
-        card_type: button
-        entity: select.worktime_tracker_edit_lunch
-        icon: mdi:food
-        name: Lunch
-        card_layout: large
-        show_state: true
-        show_attribute: false
-        sub_button: []
-        modules:
-          - "!default"
-        grid_options:
-          columns: 4
-          rows: 1
-        tap_action:
-          action: more-info
-        hold_action:
-          action: more-info
-      - type: custom:bubble-card
-        card_type: button
-        icon: mdi:content-save
-        name: Save changes
-        card_layout: large
-        show_state: false
-        sub_button: []
-        modules:
-          - "!default"
-        grid_options:
-          columns: 8
-          rows: 1
-        tap_action:
-          action: perform-action
-          perform_action: worktime_tracker.edit_day
-          data:
-            date: "{{ states('text.worktime_tracker_edit_date') }}"
-            arrival: "{{ states('text.worktime_tracker_edit_arrival') or none }}"
-            departure: "{{ states('text.worktime_tracker_edit_departure') or none }}"
-            lunch: "{{ states('select.worktime_tracker_edit_lunch') }}"
-        hold_action:
-          action: more-info
