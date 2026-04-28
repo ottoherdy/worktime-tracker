@@ -849,7 +849,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             "Departure": self._format_time(departure),
             "Lunch": lunch,
             "Hours": hours,
-            "Hours (rounded)": str(_round_quarter(hours)),
+            "Hours (rounded)": f"{_round_quarter(hours):.2f}h",
             "Overtime": overtime,
             "Edited": "yes" if edited else "no",
         }
