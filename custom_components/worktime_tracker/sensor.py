@@ -97,7 +97,7 @@ class TodaySensor(_Base):
             "arrival": _fmt(c.arrival),
             "departure": _fmt(c.departure) if c.departure else _fmt(c.planned_end),
             "planned_end": _fmt(c.planned_end),
-            "lunch": c.lunch_status,
+            "lunch": "" if c.lunch_status == "unknown" else c.lunch_status,
             "hours": hours,
             "human_readable": _hours_to_human(hours),
             "overtime": c.overtime_today(),
