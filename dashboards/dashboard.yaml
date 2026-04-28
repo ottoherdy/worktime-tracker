@@ -56,12 +56,12 @@ sections:
         icon: mdi:briefcase-clock
         badges:
           - type: entity
-            entity: sensor.worktime_tracker_status
+            entity: sensor.today_status
           - type: entity
-            entity: sensor.worktime_tracker_hours_today
+            entity: sensor.today_hours_today
       - type: custom:bubble-card
         card_type: button
-        entity: sensor.worktime_tracker_hours_today
+        entity: sensor.today_hours_today
         icon: mdi:login
         name: Arrival
         card_layout: large
@@ -79,7 +79,7 @@ sections:
           action: more-info
       - type: custom:bubble-card
         card_type: button
-        entity: sensor.worktime_tracker_hours_today
+        entity: sensor.today_hours_today
         icon: mdi:logout
         name: Departure
         card_layout: large
@@ -97,7 +97,7 @@ sections:
           action: more-info
       - type: custom:bubble-card
         card_type: button
-        entity: sensor.worktime_tracker_hours_today
+        entity: sensor.today_hours_today
         icon: mdi:timer-sand
         name: Time remaining
         card_layout: large
@@ -115,7 +115,7 @@ sections:
           action: more-info
       - type: custom:bubble-card
         card_type: button
-        entity: sensor.worktime_tracker_hours_today
+        entity: sensor.today_hours_today
         icon: mdi:food
         name: Lunch
         card_layout: large
@@ -141,7 +141,7 @@ sections:
         icon: mdi:lightning-bolt
       - type: custom:bubble-card
         card_type: button
-        entity: sensor.worktime_tracker_status
+        entity: sensor.today_status
         icon: mdi:login
         name: Log arrival
         card_layout: large
@@ -158,7 +158,7 @@ sections:
           action: more-info
       - type: custom:bubble-card
         card_type: button
-        entity: sensor.worktime_tracker_status
+        entity: sensor.today_status
         icon: mdi:logout
         name: Log departure
         card_layout: large
@@ -175,7 +175,7 @@ sections:
           action: more-info
       - type: custom:bubble-card
         card_type: button
-        entity: sensor.worktime_tracker_status
+        entity: sensor.today_status
         icon: mdi:food
         name: Lunch — Yes
         card_layout: large
@@ -194,7 +194,7 @@ sections:
           action: more-info
       - type: custom:bubble-card
         card_type: button
-        entity: sensor.worktime_tracker_status
+        entity: sensor.today_status
         icon: mdi:food-off
         name: Lunch — No
         card_layout: large
@@ -213,7 +213,7 @@ sections:
           action: more-info
       - type: custom:bubble-card
         card_type: button
-        entity: sensor.worktime_tracker_status
+        entity: sensor.today_status
         icon: mdi:google-spreadsheet
         name: Send to Sheets
         card_layout: large
@@ -230,7 +230,7 @@ sections:
           action: more-info
       - type: custom:bubble-card
         card_type: button
-        entity: sensor.worktime_tracker_status
+        entity: sensor.today_status
         icon: mdi:restart
         name: Reset today
         card_layout: large
@@ -255,14 +255,20 @@ sections:
         icon: mdi:calendar-week
         badges:
           - type: entity
-            entity: sensor.worktime_tracker_hours_this_week
+            entity: sensor.this_week_hours_this_week
           - type: template
-            content: "OT: {{ state_attr('sensor.worktime_tracker_hours_this_week', 'overtime') | round(2) }}h"
+            content: >-
+              {% set ot = state_attr('sensor.this_week_hours_this_week', 'overtime') | float(0) %}
+              {% if ot > 0 %}+{{ '%0.1f' | format(ot) }}h OT{% elif ot < -0.05 %}{{ '%0.1f' | format(ot) }}h{% endif %}
+            icon: mdi:clock-plus-outline
+            color: >-
+              {% set ot = state_attr('sensor.this_week_hours_this_week', 'overtime') | float(0) %}
+              {% if ot > 0 %}green{% elif ot < -0.05 %}red{% else %}disabled{% endif %}
       - type: markdown
         content: >
-          {% set days = state_attr('sensor.worktime_tracker_hours_this_week', 'days') or [] %}
+          {% set days = state_attr('sensor.this_week_hours_this_week', 'days') or [] %}
           {% for d in days %}
-          **{{ d.weekday }}** &nbsp; {{ d.human_readable }}{% if d.arrival != '—' %} &nbsp;·&nbsp; {{ d.arrival }}–{{ d.departure }}{% endif %}
+          **{{ d.weekday }}** &nbsp; {{ d.human_readable }}{% if d.arrival != '—' %} &nbsp;·&nbsp; {{ d.arrival }}–{{ d.departure }}{% if d.lunch == 'yes' %} &nbsp;🥗{% endif %}{% endif %}
 
           {% endfor %}
         grid_options:
@@ -278,14 +284,20 @@ sections:
         icon: mdi:calendar-week-begin
         badges:
           - type: entity
-            entity: sensor.worktime_tracker_hours_last_week
+            entity: sensor.last_week_hours_last_week
           - type: template
-            content: "OT: {{ state_attr('sensor.worktime_tracker_hours_last_week', 'overtime') | round(2) }}h"
+            content: >-
+              {% set ot = state_attr('sensor.last_week_hours_last_week', 'overtime') | float(0) %}
+              {% if ot > 0 %}+{{ '%0.1f' | format(ot) }}h OT{% elif ot < -0.05 %}{{ '%0.1f' | format(ot) }}h{% endif %}
+            icon: mdi:clock-plus-outline
+            color: >-
+              {% set ot = state_attr('sensor.last_week_hours_last_week', 'overtime') | float(0) %}
+              {% if ot > 0 %}green{% elif ot < -0.05 %}red{% else %}disabled{% endif %}
       - type: markdown
         content: >
-          {% set days = state_attr('sensor.worktime_tracker_hours_last_week', 'days') or [] %}
+          {% set days = state_attr('sensor.last_week_hours_last_week', 'days') or [] %}
           {% for d in days %}
-          **{{ d.weekday }}** &nbsp; {{ d.human_readable }}{% if d.arrival != '—' %} &nbsp;·&nbsp; {{ d.arrival }}–{{ d.departure }}{% endif %}
+          **{{ d.weekday }}** &nbsp; {{ d.human_readable }}{% if d.arrival != '—' %} &nbsp;·&nbsp; {{ d.arrival }}–{{ d.departure }}{% if d.lunch == 'yes' %} &nbsp;🥗{% endif %}{% endif %}
 
           {% endfor %}
         grid_options:
@@ -325,24 +337,63 @@ sections:
             formatter: |
               EVAL:function(val) { return val ? val.toFixed(1) + 'h' : ''; }
         series:
-          - entity: sensor.worktime_tracker_hours_this_week
+          - entity: sensor.this_week_hours_this_week
             name: This week
             type: column
             color: "#3B82F6"
             data_generator: |
               const days = entity.attributes.days || [];
               return days.map(d => ({ x: d.weekday, y: d.hours }));
-          - entity: sensor.worktime_tracker_hours_last_week
+          - entity: sensor.last_week_hours_last_week
             name: Last week
             type: column
             color: "#9CA3AF"
             data_generator: |
               const days = entity.attributes.days || [];
               return days.map(d => ({ x: d.weekday, y: d.hours }));
-          - entity: sensor.worktime_tracker_hours_this_week
+          - entity: sensor.this_week_hours_this_week
             name: 8h target
             type: line
             color: "#F97316"
             stroke_width: 2
             data_generator: |
               return [{x:'Mon',y:8},{x:'Tue',y:8},{x:'Wed',y:8},{x:'Thu',y:8},{x:'Fri',y:8}];
+
+  # --- Edit day ---
+  - type: grid
+    cards:
+      - type: heading
+        heading: Edit day
+        heading_style: title
+        icon: mdi:calendar-edit
+      - type: markdown
+        content: >
+          {% set days = state_attr('sensor.today_hours_today', 'recent_days') or [] %}
+          {% if days %}
+          | Date | | Arrival | Departure | Lunch |
+          |---|---|---|---|---|
+          {% for d in days %}
+          | **{{ d.weekday }}** {{ d.date }} | {{ d.human_readable }} | {{ d.arrival }} | {{ d.departure }} | {{ d.lunch }} |
+          {% endfor %}
+          {% else %}
+          *No history yet*
+          {% endif %}
+        grid_options:
+          columns: 8
+          rows: 4
+      - type: custom:bubble-card
+        card_type: button
+        entity: sensor.today_status
+        icon: mdi:pencil-box
+        name: Edit a day
+        card_layout: large
+        show_state: false
+        modules:
+          - "!default"
+        grid_options:
+          columns: 8
+          rows: 1
+        tap_action:
+          action: perform-action
+          perform_action: worktime_tracker.edit_day
+          data: {}

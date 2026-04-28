@@ -103,6 +103,7 @@ class TodaySensor(_Base):
             "overtime": c.overtime_today(),
             "time_remaining": time_remaining,
             "status": c.status(),
+            "recent_days": c.recent_days(14),
         }
 
 

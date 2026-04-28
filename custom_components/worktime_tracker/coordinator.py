@@ -677,6 +677,51 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                 })
         return result
 
+    def recent_days(self, count: int = 14) -> list[dict[str, Any]]:
+        """Return the last `count` calendar days that have data, newest first."""
+        today = dt_util.now().date()
+        result = []
+        for offset in range(count):
+            d = today - timedelta(days=offset)
+            d_iso = d.isoformat()
+            entry: dict[str, Any] | None = None
+            for e in self.history:
+                if e.get("date") == d_iso:
+                    entry = e
+                    break
+            if entry is None and d == today and self.arrival is not None:
+                entry = {
+                    "date": d_iso,
+                    "arrival": self.arrival.isoformat(),
+                    "planned_end": self.planned_end.isoformat() if self.planned_end else None,
+                    "departure": self.departure.isoformat() if self.departure else None,
+                    "lunch": self.lunch_status,
+                    "hours": self.hours_worked_today(),
+                }
+            if not entry:
+                continue
+
+            def _p(iso: str | None) -> str:
+                if not iso:
+                    return "—"
+                try:
+                    return dt_util.as_local(datetime.fromisoformat(iso)).strftime("%H:%M")
+                except Exception:
+                    return "—"
+
+            hours = float(entry.get("hours", 0.0))
+            dep_iso = entry.get("departure") or entry.get("planned_end")
+            result.append({
+                "date": d_iso,
+                "weekday": _SHORT_DAYS[d.weekday()],
+                "arrival": _p(entry.get("arrival")),
+                "departure": _p(dep_iso),
+                "lunch": entry.get("lunch", "—"),
+                "hours": round(hours, 2),
+                "human_readable": _hours_to_human(hours),
+            })
+        return result
+
     def time_remaining_seconds(self) -> int:
         if self.arrival is None or self.planned_end is None:
             return 0

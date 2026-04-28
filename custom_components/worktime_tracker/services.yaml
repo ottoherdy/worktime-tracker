@@ -33,28 +33,25 @@ edit_day:
   fields:
     date:
       name: Date
-      description: The date to edit (YYYY-MM-DD). Leave empty for today.
+      description: The date to edit. Leave empty for today.
       required: false
-      example: "2026-04-25"
       selector:
-        text:
+        date:
     arrival:
       name: Arrival
-      description: Arrival time (HH:MM)
+      description: Arrival time
       required: false
-      example: "08:15"
       selector:
-        text:
+        time:
     departure:
       name: Departure
-      description: Departure time (HH:MM)
+      description: Departure time
       required: false
-      example: "16:30"
       selector:
-        text:
+        time:
     lunch:
       name: Lunch
-      description: Lunch status
+      description: Did you have lunch?
       required: false
       selector:
         select:
