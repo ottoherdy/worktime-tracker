@@ -839,6 +839,8 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                 _LOGGER.warning("Worktime: failed to parse entry for Sheets: %s", exc)
                 return
 
+        overtime = round(hours - self.daily_net_target, 2)
+
         row = {
             "Date": target_date.isoformat(),
             "Weekday": _WEEKDAYS[target_date.weekday()],
@@ -847,7 +849,8 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             "Departure": self._format_time(departure),
             "Lunch": lunch,
             "Hours": hours,
-            "Hours (rounded)": _round_quarter(hours),
+            "Hours (rounded)": str(_round_quarter(hours)),
+            "Overtime": overtime,
             "Edited": "yes" if edited else "no",
         }
         try:
