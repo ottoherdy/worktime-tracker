@@ -318,7 +318,9 @@ sections:
               icon: mdi:calendar-week
             - entity: sensor.this_week_hours_this_week
               show_name: false
-              show_state: true
+              show_state: false
+              show_attribute: true
+              attribute: hours
             - entity: sensor.this_week_hours_this_week
               show_name: false
               show_state: false
@@ -339,7 +341,9 @@ sections:
               icon: mdi:calendar-week-begin
             - entity: sensor.last_week_hours_last_week
               show_name: false
-              show_state: true
+              show_state: false
+              show_attribute: true
+              attribute: hours
             - entity: sensor.last_week_hours_last_week
               show_name: false
               show_state: false

@@ -142,6 +142,7 @@ class ThisWeekSensor(_Base):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         return {
+            "hours": self.coordinator.hours_worked_in_week(),
             "overtime": self.coordinator.overtime_this_week(),
             "weekly_target": self.coordinator.weekly_target,
             "days": self.coordinator.week_breakdown(weeks_back=0),
@@ -167,6 +168,7 @@ class LastWeekSensor(_Base):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         return {
+            "hours": self.coordinator.hours_worked_last_week(),
             "overtime": self.coordinator.overtime_last_week(),
             "days": self.coordinator.week_breakdown(weeks_back=1),
         }
