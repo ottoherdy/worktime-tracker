@@ -348,7 +348,7 @@ sections:
         content: >-
           {% set days = state_attr('sensor.this_week_hours_this_week', 'days') or [] %}
           {% for d in days %}
-          `{{ d.weekday.ljust(7) }}` {% if d.arrival != '—' %}{{ d.arrival }}–{{ d.departure }} · {% endif %}{{ d.human_readable }}{% if d.lunch in ['yes','no'] %} · {{ d.lunch }}{% endif %}
+          `{{ d.weekday.ljust(7) }}`{% if d.arrival != '—' %}{{ d.arrival }}–{{ d.departure }} · {% endif %}{{ d.human_readable }}
 
           {% endfor %}
         grid_options:
@@ -358,7 +358,7 @@ sections:
         content: >-
           {% set days = state_attr('sensor.last_week_hours_last_week', 'days') or [] %}
           {% for d in days %}
-          `{{ d.weekday.ljust(7) }}` {% if d.arrival != '—' %}{{ d.arrival }}–{{ d.departure }} · {% endif %}{{ d.human_readable }}{% if d.lunch in ['yes','no'] %} · {{ d.lunch }}{% endif %}
+          `{{ d.weekday.ljust(7) }}`{% if d.arrival != '—' %}{{ d.arrival }}–{{ d.departure }} · {% endif %}{{ d.human_readable }}
 
           {% endfor %}
         grid_options:
