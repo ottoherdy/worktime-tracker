@@ -318,7 +318,7 @@ sections:
           - type: template
             content: >-
               {% set ot = state_attr('sensor.this_week_hours_this_week', 'overtime') | float(0) %}
-              {% if ot > 0 %}+{{ '%0.1f' | format(ot) }}h OT{% elif ot < -0.05 %}{{ '%0.1f' | format(ot) }}h{% endif %}
+              {% if ot > 0.05 %}+{{ ot | round(1) }}h OT{% elif ot < -0.05 %}{{ ot | round(1) }}h{% endif %}
         grid_options:
           columns: 6
           rows: auto
@@ -332,7 +332,7 @@ sections:
           - type: template
             content: >-
               {% set ot = state_attr('sensor.last_week_hours_last_week', 'overtime') | float(0) %}
-              {% if ot > 0 %}+{{ '%0.1f' | format(ot) }}h OT{% elif ot < -0.05 %}{{ '%0.1f' | format(ot) }}h{% endif %}
+              {% if ot > 0.05 %}+{{ ot | round(1) }}h OT{% elif ot < -0.05 %}{{ ot | round(1) }}h{% endif %}
         grid_options:
           columns: 6
           rows: auto
