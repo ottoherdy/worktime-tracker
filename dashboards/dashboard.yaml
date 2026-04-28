@@ -315,10 +315,14 @@ sections:
         badges:
           - type: entity
             entity: sensor.this_week_hours_this_week
-          - type: template
+          - type: custom:mushroom-template-badge
             content: >-
               {% set ot = state_attr('sensor.this_week_hours_this_week', 'overtime') | float(0) %}
-              {% if ot > 0.05 %}+{{ ot | round(1) }}h OT{% elif ot < -0.05 %}{{ ot | round(1) }}h{% endif %}
+              {% if ot > 0.05 %}+{{ ot | round(1) }}h{% elif ot < -0.05 %}{{ ot | round(1) }}h{% endif %}
+            icon: mdi:clock-plus-outline
+            color: >-
+              {% set ot = state_attr('sensor.this_week_hours_this_week', 'overtime') | float(0) %}
+              {{ 'green' if ot > 0.05 else 'red' if ot < -0.05 else 'disabled' }}
         grid_options:
           columns: 6
           rows: auto
@@ -329,10 +333,14 @@ sections:
         badges:
           - type: entity
             entity: sensor.last_week_hours_last_week
-          - type: template
+          - type: custom:mushroom-template-badge
             content: >-
               {% set ot = state_attr('sensor.last_week_hours_last_week', 'overtime') | float(0) %}
-              {% if ot > 0.05 %}+{{ ot | round(1) }}h OT{% elif ot < -0.05 %}{{ ot | round(1) }}h{% endif %}
+              {% if ot > 0.05 %}+{{ ot | round(1) }}h{% elif ot < -0.05 %}{{ ot | round(1) }}h{% endif %}
+            icon: mdi:clock-plus-outline
+            color: >-
+              {% set ot = state_attr('sensor.last_week_hours_last_week', 'overtime') | float(0) %}
+              {{ 'green' if ot > 0.05 else 'red' if ot < -0.05 else 'disabled' }}
         grid_options:
           columns: 6
           rows: auto
