@@ -112,25 +112,22 @@ sections:
           action: more-info
         hold_action:
           action: more-info
-      - type: custom:mushroom-template-card
-        primary: Lunch
-        secondary: >-
-          {% set l = state_attr('sensor.today_hours_today', 'lunch') %}
-          {{ 'Ate lunch' if l == 'yes' else 'No lunch' if l == 'no' else '' }}
-        icon: >-
-          {% set l = state_attr('sensor.today_hours_today', 'lunch') %}
-          {{ 'mdi:check-circle' if l == 'yes' else 'mdi:close-circle' if l == 'no' else 'mdi:help-circle' }}
-        icon_color: >-
-          {% set l = state_attr('sensor.today_hours_today', 'lunch') %}
-          {{ 'green' if l == 'yes' else 'red' if l == 'no' else 'grey' }}
-        layout: horizontal
-        fill_container: false
+      - type: custom:bubble-card
+        card_type: button
         entity: sensor.today_hours_today
-        tap_action:
-          action: more-info
+        icon: mdi:food
+        name: Lunch
+        card_layout: large
+        show_state: false
+        show_attribute: true
+        attribute: lunch
+        modules:
+          - "!default"
         grid_options:
           columns: 4
           rows: 1
+        tap_action:
+          action: more-info
       - type: custom:bubble-card
         card_type: button
         button_type: button
