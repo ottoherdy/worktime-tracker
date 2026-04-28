@@ -308,39 +308,35 @@ sections:
   # --- This week / Last week side by side ---
   - type: grid
     cards:
-      - type: heading
-        heading: This week
-        heading_style: title
-        icon: mdi:calendar-week
-        badges:
-          - type: entity
-            entity: sensor.this_week_hours_this_week
-          - type: custom:mushroom-template-badge
-            content: >-
-              {% set ot = state_attr('sensor.this_week_hours_this_week', 'overtime') | float(0) %}
-              {% if ot > 0.05 %}+{{ ot | round(1) }}h{% elif ot < -0.05 %}{{ ot | round(1) }}h{% endif %}
-            icon: mdi:clock-plus-outline
-            color: >-
-              {% set ot = state_attr('sensor.this_week_hours_this_week', 'overtime') | float(0) %}
-              {{ 'green' if ot > 0.05 else 'red' if ot < -0.05 else 'disabled' }}
+      - type: custom:bubble-card
+        card_type: sub-buttons
+        sub_button:
+          main: []
+          bottom:
+            - name: This week
+              show_name: true
+              icon: mdi:calendar-week
+            - entity: sensor.this_week_hours_this_week
+              show_name: false
+              show_state: true
+            - {}
+        rows: 0.938
         grid_options:
           columns: 6
           rows: auto
-      - type: heading
-        heading: Last week
-        heading_style: title
-        icon: mdi:calendar-week-begin
-        badges:
-          - type: entity
-            entity: sensor.last_week_hours_last_week
-          - type: custom:mushroom-template-badge
-            content: >-
-              {% set ot = state_attr('sensor.last_week_hours_last_week', 'overtime') | float(0) %}
-              {% if ot > 0.05 %}+{{ ot | round(1) }}h{% elif ot < -0.05 %}{{ ot | round(1) }}h{% endif %}
-            icon: mdi:clock-plus-outline
-            color: >-
-              {% set ot = state_attr('sensor.last_week_hours_last_week', 'overtime') | float(0) %}
-              {{ 'green' if ot > 0.05 else 'red' if ot < -0.05 else 'disabled' }}
+      - type: custom:bubble-card
+        card_type: sub-buttons
+        sub_button:
+          main: []
+          bottom:
+            - name: Last week
+              show_name: true
+              icon: mdi:calendar-week-begin
+            - entity: sensor.last_week_hours_last_week
+              show_name: false
+              show_state: true
+            - {}
+        rows: 0.938
         grid_options:
           columns: 6
           rows: auto
