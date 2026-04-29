@@ -439,3 +439,20 @@ sections:
           bottom: []
         show_icon: true
         force_icon: false
+      - type: custom:bubble-card
+        card_type: button
+        button_type: switch
+        entity: switch.today_auto_departure
+        icon: mdi:clock-out
+        name: Auto departure
+        card_layout: small
+        show_state: false
+        modules:
+          - "!default"
+        grid_options:
+          columns: 4
+          rows: 1
+        tap_action:
+          action: toggle
+        hold_action:
+          action: more-info
