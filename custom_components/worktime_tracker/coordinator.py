@@ -96,16 +96,32 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         self._unsub_callbacks: list[Any] = []
 
         # Today state
-        self.arrival: datetime | None = None
-        self.departure: datetime | None = None
+        # _sessions: list of {"start": isoformat str, "end": isoformat str | None}
+        self._sessions: list[dict[str, Any]] = []
         self.planned_end: datetime | None = None
         self.lunch_status: str = LUNCH_UNKNOWN
         self.lunch_notification_sent: bool = False
         self.day_logged: bool = False
         self.current_date: date = dt_util.now().date()
 
-        # History: list of dicts { date, arrival, planned_end, departure, lunch, hours }
+        # History: list of dicts { date, sessions, arrival, planned_end, departure, lunch, hours }
         self.history: list[dict[str, Any]] = []
+
+    # ------------------------------------------------------------------
+    # Session-derived properties
+    # ------------------------------------------------------------------
+    @property
+    def arrival(self) -> datetime | None:
+        if not self._sessions:
+            return None
+        return datetime.fromisoformat(self._sessions[0]["start"])
+
+    @property
+    def departure(self) -> datetime | None:
+        if not self._sessions:
+            return None
+        end = self._sessions[-1].get("end")
+        return datetime.fromisoformat(end) if end else None
 
     # ------------------------------------------------------------------
     # Configuration helpers
@@ -354,20 +370,17 @@ class WorktimeCoordinator(DataUpdateCoordinator):
     ) -> None:
         if at_time is None:
             at_time = dt_util.now()
-        if self.arrival is not None and not manual:
-            return  # Already registered today
-        self.arrival = at_time
-        self.departure = None
+        # If last session is still open (already at work), ignore
+        if self._sessions and self._sessions[-1].get("end") is None and not manual:
+            return
+        self._sessions.append({"start": at_time.isoformat(), "end": None})
         self.day_logged = False
-        # Planned end = arrival + workday_hours (initially, before lunch known)
-        self.planned_end = self.arrival + timedelta(hours=self.workday_hours)
-        # Apply default lunch assumption immediately so planned_end is realistic
-        if self.auto_lunch_default and self.lunch_status == LUNCH_UNKNOWN:
-            # We assume lunch will be taken (standard); we'll confirm at lunch_time
-            pass
+        # planned_end is always based on first arrival
+        first_arrival = datetime.fromisoformat(self._sessions[0]["start"])
+        self.planned_end = first_arrival + timedelta(hours=self.workday_hours)
         self.lunch_notification_sent = False
         self.current_date = at_time.date()
-        _LOGGER.info("Worktime: arrival registered at %s", self.arrival.isoformat())
+        _LOGGER.info("Worktime: arrival registered at %s", at_time.isoformat())
         await self._async_save_today()
         self.async_set_updated_data(self.snapshot())
 
@@ -378,13 +391,14 @@ class WorktimeCoordinator(DataUpdateCoordinator):
     ) -> None:
         if at_time is None:
             at_time = dt_util.now()
-        if self.arrival is None:
+        if not self._sessions:
             _LOGGER.debug("Worktime: departure ignored — no arrival registered")
             return
-        # Avoid double-counting if we get multiple "leave" events in quick succession
-        if self.departure is not None and not manual:
+        last = self._sessions[-1]
+        # Avoid double-closing if we get multiple "leave" events in quick succession
+        if last.get("end") is not None and not manual:
             return
-        self.departure = at_time
+        last["end"] = at_time.isoformat()
 
         # If lunch unknown at departure, fall back to default
         if self.lunch_status == LUNCH_UNKNOWN:
@@ -451,6 +465,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             if entry.get("lunch") == LUNCH_YES:
                 hours -= self.lunch_deduction
             entry["hours"] = max(0.0, round(hours, 2))
+            entry["sessions"] = [{"start": entry["arrival"], "end": entry["departure"]}]
 
         await self._async_save_history()
 
@@ -489,8 +504,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         self.planned_end = self.arrival + timedelta(hours=hours)
 
     def _reset_day_state(self) -> None:
-        self.arrival = None
-        self.departure = None
+        self._sessions = []
         self.planned_end = None
         self.lunch_status = LUNCH_UNKNOWN
         self.lunch_notification_sent = False
@@ -499,16 +513,21 @@ class WorktimeCoordinator(DataUpdateCoordinator):
 
     def _restore_from_history_entry(self, entry: dict[str, Any]) -> None:
         try:
-            self.arrival = (
-                datetime.fromisoformat(entry["arrival"]) if entry.get("arrival") else None
-            )
+            sessions = entry.get("sessions")
+            if sessions:
+                self._sessions = sessions
+            else:
+                # Backward compat: old format with flat arrival/departure
+                arrival_iso = entry.get("arrival")
+                departure_iso = entry.get("departure")
+                if arrival_iso:
+                    self._sessions = [{"start": arrival_iso, "end": departure_iso}]
+                else:
+                    self._sessions = []
             self.planned_end = (
                 datetime.fromisoformat(entry["planned_end"])
                 if entry.get("planned_end")
                 else None
-            )
-            self.departure = (
-                datetime.fromisoformat(entry["departure"]) if entry.get("departure") else None
             )
             self.lunch_status = entry.get("lunch", LUNCH_UNKNOWN)
             self.day_logged = bool(entry.get("departure"))
@@ -549,15 +568,17 @@ class WorktimeCoordinator(DataUpdateCoordinator):
     # Computed values exposed to entities
     # ------------------------------------------------------------------
     def hours_worked_today(self) -> float:
-        if self.arrival is None:
+        if not self._sessions:
             return 0.0
-        end = self.departure or dt_util.now()
-        delta = end - self.arrival
-        hours = delta.total_seconds() / 3600.0
-        # Subtract lunch if applicable (only when day is finished)
+        now = dt_util.now()
+        total = 0.0
+        for s in self._sessions:
+            start = datetime.fromisoformat(s["start"])
+            end = datetime.fromisoformat(s["end"]) if s.get("end") else now
+            total += (end - start).total_seconds() / 3600.0
         if self.lunch_status == LUNCH_YES:
-            hours -= self.lunch_deduction
-        return max(0.0, round(hours, 2))
+            total -= self.lunch_deduction
+        return max(0.0, round(total, 2))
 
     def hours_worked_in_week(self, target_date: date | None = None) -> float:
         """Sum hours for the ISO week of target_date (default: today)."""
@@ -572,11 +593,14 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             y, w, _ = d.isocalendar()
             if y == year and w == week:
                 total += float(entry.get("hours", 0.0))
-        # Add today's in-progress hours if not yet logged in history
+        # Add today's live hours if the day is still in progress
         today = dt_util.now().date()
         if today.isocalendar()[:2] == (year, week):
-            already_logged = any(e.get("date") == today.isoformat() for e in self.history)
-            if not already_logged and self.arrival is not None:
+            day_complete = any(
+                e.get("date") == today.isoformat() and e.get("departure")
+                for e in self.history
+            )
+            if not day_complete and self._sessions:
                 total += self.hours_worked_today()
         return round(total, 2)
 
@@ -772,13 +796,15 @@ class WorktimeCoordinator(DataUpdateCoordinator):
     async def _async_save_today(self) -> None:
         """Upsert today's working state into history (so a restart keeps state)."""
         today_iso = self.current_date.isoformat()
+        has_final_departure = bool(self._sessions and self._sessions[-1].get("end"))
         entry = {
             "date": today_iso,
-            "arrival": self.arrival.isoformat() if self.arrival else None,
+            "sessions": list(self._sessions),
+            "arrival": self._sessions[0]["start"] if self._sessions else None,
             "planned_end": self.planned_end.isoformat() if self.planned_end else None,
-            "departure": self.departure.isoformat() if self.departure else None,
+            "departure": self._sessions[-1]["end"] if has_final_departure else None,
             "lunch": self.lunch_status,
-            "hours": self.hours_worked_today() if self.departure else 0.0,
+            "hours": self.hours_worked_today() if has_final_departure else 0.0,
         }
         # Only keep "complete" days as historical, but persist in-progress too for restore
         replaced = False
