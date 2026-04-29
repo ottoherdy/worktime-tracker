@@ -478,9 +478,14 @@ class WorktimeCoordinator(DataUpdateCoordinator):
 
         await self._async_save_history()
 
-        # If editing today, sync in-memory state
+        # If editing today, sync in-memory state and recompute planned_end
         if target_date == today:
             self._restore_from_history_entry(entry)
+            if self.arrival is not None:
+                self.planned_end = self.arrival + timedelta(hours=self.workday_hours)
+                if self.lunch_status == LUNCH_NO:
+                    self.planned_end -= timedelta(hours=self.lunch_deduction)
+            await self._async_save_today()
 
         self.async_set_updated_data(self.snapshot())
         _LOGGER.info("Worktime: edited day %s → %s", target_iso, entry)
