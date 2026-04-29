@@ -444,7 +444,8 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         target_iso = target_date.isoformat()
 
         def _parse_time(t: str, ref_date: date) -> datetime:
-            h, m = map(int, t.split(":"))
+            parts = t.split(":")
+            h, m = int(parts[0]), int(parts[1])
             local = datetime(ref_date.year, ref_date.month, ref_date.day, h, m)
             return dt_util.as_utc(dt_util.as_local(local))
 
