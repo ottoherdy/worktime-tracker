@@ -253,17 +253,6 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             )
         )
 
-        # Auto-departure at configured time (if enabled)
-        adt = self.auto_departure_time_obj
-        self._unsub_callbacks.append(
-            async_track_time_change(
-                self.hass,
-                self._handle_auto_departure_time,
-                hour=adt.hour,
-                minute=adt.minute,
-                second=0,
-            )
-        )
 
         # Initial state check – maybe person is already at work
         state = self.hass.states.get(self.person_entity)
@@ -376,15 +365,6 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             )
         except Exception as exc:  # pylint: disable=broad-except
             _LOGGER.error("Worktime: failed to send time report notification: %s", exc)
-
-    async def _handle_auto_departure_time(self, now: datetime) -> None:
-        """Triggered at configured auto-departure time."""
-        if not self.auto_departure_enabled:
-            return
-        if self.arrival is None or self._departure is not None:
-            return
-        _LOGGER.info("Worktime: auto-departure triggered at %s", now.isoformat())
-        await self.async_register_departure(at_time=now)
 
     async def _handle_notification_action(self, event: Event) -> None:
         action = event.data.get("action")
