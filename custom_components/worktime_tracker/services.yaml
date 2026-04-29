@@ -51,11 +51,10 @@ edit_day:
         time:
     lunch:
       name: Lunch
-      description: Did you have lunch?
+      description: Did you have lunch? Leave unchecked to keep as unknown.
       required: false
       selector:
         select:
           options:
             - "yes"
             - "no"
-            - "unknown"
