@@ -312,11 +312,21 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         was_at_work = bool(old_state and old_state.state.lower() == zone_name.lower())
         is_at_work = new_state.state.lower() == zone_name.lower()
 
+        now = dt_util.now()
         if not was_at_work and is_at_work:
             _LOGGER.info("Worktime: arrived at work zone (person state='%s')", new_s)
-            await self.async_register_arrival(at_time=dt_util.now())
+            await self.async_register_arrival(at_time=now)
         elif was_at_work and not is_at_work:
-            _LOGGER.info("Worktime: left work zone — time keeps running (person state='%s')", new_s)
+            if (
+                self.auto_departure_enabled
+                and self.arrival is not None
+                and self._departure is None
+                and now.time() >= self.auto_departure_time_obj
+            ):
+                _LOGGER.info("Worktime: left zone after %s — auto-departure triggered", self.auto_departure_time_obj)
+                await self.async_register_departure(at_time=now)
+            else:
+                _LOGGER.info("Worktime: left zone before auto-departure time — time keeps running")
 
     async def _handle_lunch_time(self, now: datetime) -> None:
         """Triggered at configured lunch time daily."""
