@@ -11,6 +11,8 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 
 from .const import (
+    CONF_AUTO_DEPARTURE_ENABLED,
+    CONF_AUTO_DEPARTURE_TIME,
     CONF_AUTO_LUNCH_DEFAULT,
     CONF_LUNCH_DEDUCTION,
     CONF_LUNCH_TIME,
@@ -21,6 +23,8 @@ from .const import (
     CONF_WEEKLY_TARGET,
     CONF_WORK_ZONE,
     CONF_WORKDAY_HOURS,
+    DEFAULT_AUTO_DEPARTURE_ENABLED,
+    DEFAULT_AUTO_DEPARTURE_TIME,
     DEFAULT_AUTO_LUNCH_DEFAULT,
     DEFAULT_LUNCH_DEDUCTION,
     DEFAULT_LUNCH_TIME,
@@ -95,6 +99,14 @@ def _build_user_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
                 CONF_AUTO_LUNCH_DEFAULT,
                 default=defaults.get(CONF_AUTO_LUNCH_DEFAULT, DEFAULT_AUTO_LUNCH_DEFAULT),
             ): selector.BooleanSelector(),
+            vol.Required(
+                CONF_AUTO_DEPARTURE_ENABLED,
+                default=defaults.get(CONF_AUTO_DEPARTURE_ENABLED, DEFAULT_AUTO_DEPARTURE_ENABLED),
+            ): selector.BooleanSelector(),
+            vol.Required(
+                CONF_AUTO_DEPARTURE_TIME,
+                default=defaults.get(CONF_AUTO_DEPARTURE_TIME, DEFAULT_AUTO_DEPARTURE_TIME),
+            ): selector.TimeSelector(),
         }
     )
 

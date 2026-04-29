@@ -16,6 +16,8 @@ CONF_WEEKLY_TARGET = "weekly_target"
 CONF_SHEETS_ENTRY = "sheets_config_entry"
 CONF_SHEETS_WORKSHEET = "sheets_worksheet"
 CONF_AUTO_LUNCH_DEFAULT = "auto_lunch_default"
+CONF_AUTO_DEPARTURE_ENABLED = "auto_departure_enabled"
+CONF_AUTO_DEPARTURE_TIME = "auto_departure_time"
 
 # Defaults
 DEFAULT_LUNCH_TIME = "13:00"
@@ -24,6 +26,8 @@ DEFAULT_LUNCH_DEDUCTION = 0.5  # 30 minutes
 DEFAULT_WEEKLY_TARGET = 40.0
 DEFAULT_AUTO_LUNCH_DEFAULT = True
 DEFAULT_SHEETS_WORKSHEET = "Worktime"
+DEFAULT_AUTO_DEPARTURE_ENABLED = False
+DEFAULT_AUTO_DEPARTURE_TIME = "15:00"
 
 # Storage
 STORAGE_KEY = f"{DOMAIN}.history"

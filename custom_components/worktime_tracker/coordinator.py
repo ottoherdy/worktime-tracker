@@ -37,6 +37,8 @@ from .const import (
     ACTION_TIMEREPORT_NO,
     ACTION_TIMEREPORT_YES,
     NOTIFICATION_TAG_TIMEREPORT,
+    CONF_AUTO_DEPARTURE_ENABLED,
+    CONF_AUTO_DEPARTURE_TIME,
     CONF_AUTO_LUNCH_DEFAULT,
     CONF_LUNCH_DEDUCTION,
     CONF_LUNCH_TIME,
@@ -47,6 +49,8 @@ from .const import (
     CONF_WEEKLY_TARGET,
     CONF_WORK_ZONE,
     CONF_WORKDAY_HOURS,
+    DEFAULT_AUTO_DEPARTURE_ENABLED,
+    DEFAULT_AUTO_DEPARTURE_TIME,
     DEFAULT_AUTO_LUNCH_DEFAULT,
     DEFAULT_LUNCH_DEDUCTION,
     DEFAULT_LUNCH_TIME,
@@ -187,6 +191,14 @@ class WorktimeCoordinator(DataUpdateCoordinator):
     def auto_lunch_default(self) -> bool:
         return bool(self.options.get(CONF_AUTO_LUNCH_DEFAULT, DEFAULT_AUTO_LUNCH_DEFAULT))
 
+    @property
+    def auto_departure_enabled(self) -> bool:
+        return bool(self.options.get(CONF_AUTO_DEPARTURE_ENABLED, DEFAULT_AUTO_DEPARTURE_ENABLED))
+
+    @property
+    def auto_departure_time_obj(self) -> time:
+        return _parse_lunch_time(self.options.get(CONF_AUTO_DEPARTURE_TIME, DEFAULT_AUTO_DEPARTURE_TIME))
+
     # ------------------------------------------------------------------
     # Initialization / shutdown
     # ------------------------------------------------------------------
@@ -242,6 +254,18 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         self._unsub_callbacks.append(
             async_track_time_change(
                 self.hass, self._handle_timereport_time, hour=16, minute=0, second=0
+            )
+        )
+
+        # Auto-departure at configured time (if enabled)
+        adt = self.auto_departure_time_obj
+        self._unsub_callbacks.append(
+            async_track_time_change(
+                self.hass,
+                self._handle_auto_departure_time,
+                hour=adt.hour,
+                minute=adt.minute,
+                second=0,
             )
         )
 
@@ -347,6 +371,15 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             )
         except Exception as exc:  # pylint: disable=broad-except
             _LOGGER.error("Worktime: failed to send time report notification: %s", exc)
+
+    async def _handle_auto_departure_time(self, now: datetime) -> None:
+        """Triggered at configured auto-departure time."""
+        if not self.auto_departure_enabled:
+            return
+        if self.arrival is None or self._departure is not None:
+            return
+        _LOGGER.info("Worktime: auto-departure triggered at %s", now.isoformat())
+        await self.async_register_departure(at_time=now)
 
     async def _handle_notification_action(self, event: Event) -> None:
         action = event.data.get("action")
