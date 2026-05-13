@@ -56,6 +56,12 @@ Required HACS frontend cards:
 - [Bubble Card](https://github.com/Clooos/Bubble-Card)
 - [Flex Table Card](https://github.com/custom-cards/flex-table-card)
 
+The dashboard uses a script entity (`script.edit_worktime_day`) for the Edit day button. Create it once in HA:
+
+1. Go to **Settings → Automations & Scenes → Scripts → Create Script → Edit in YAML**
+2. Paste the contents of `dashboards/script_edit_worktime_day.yaml`
+3. Save — HA will register it as `script.edit_worktime_day`
+
 ### 4 — Google Sheets (optional)
 
 1. Install the official **Google Sheets** integration via **Settings → Devices & Services → + Add Integration**
@@ -106,23 +112,22 @@ The integration appends one row per day with these columns:
 | Log departure | Register departure right now |
 | Lunch — Yes | Mark lunch as taken |
 | Lunch — No | Mark lunch as not taken |
-| Edit day | Change arrival, departure, or lunch for any date |
-| Sick day | Log a sick day (custom hours or full day) |
+| Edit day | Change arrival, departure, lunch, or type (normal/sick) for any date |
 | Send to Sheets | Manually send today's row |
 | Reset today | Clear today's data and start over |
 | Auto departure toggle | Enable/disable the auto-departure feature |
 
 ### Sick days
 
-Call `worktime_tracker.log_sick_day` or tap the **Sick day** button on the dashboard.
+Use the **Edit day** button on the dashboard. Set **Type → Sick day** and optionally enter the number of hours (default: 8h).
 
 - Counts toward hours and overtime just like a worked day
 - Sent to Google Sheets with `Type: Sick`
-- Supports partial days — specify `hours` or leave empty for a full workday
+- Supports partial days — specify hours or leave empty for a full 8h day
 
 ### Edit any day
 
-Call `worktime_tracker.edit_day` or use the **Edit day** button. Lets you correct arrival, departure, or lunch for any historical date. The updated row is automatically sent to Google Sheets marked as `Edited: yes`.
+Use the **Edit day** button or call `worktime_tracker.edit_day`. Lets you correct arrival, departure, lunch, or type for any historical date. Setting **Type: sick** converts the day to a sick day (8h default). The updated row is automatically sent to Google Sheets marked as `Edited: yes`.
 
 ### Auto export to Sheets
 
@@ -175,8 +180,8 @@ Each entry in the `days` attribute list contains: `date`, `weekday`, `arrival`, 
 | `worktime_tracker.set_lunch` | `had_lunch: true/false` | Set lunch status |
 | `worktime_tracker.reset_today` | — | Clear today's data |
 | `worktime_tracker.export_history` | — | Send today's row to Google Sheets now |
-| `worktime_tracker.edit_day` | `date` (optional), `arrival` HH:MM, `departure` HH:MM, `lunch` yes/no | Edit any historical day. Sends updated row to Sheets marked as edited. |
-| `worktime_tracker.log_sick_day` | `date` (optional), `hours` (optional) | Log a sick day. Defaults to today and full workday if not specified. |
+| `worktime_tracker.edit_day` | `date`, `type` (normal/sick), `arrival`, `departure`, `lunch`, `hours` — all optional | Edit any day. Set `type: sick` to log a sick day (default 8h). Sends updated row to Sheets marked as edited. |
+| `worktime_tracker.log_sick_day` | `date` (optional), `hours` (optional) | Log a sick day directly. Defaults to today and 8h. |
 
 ---
 
