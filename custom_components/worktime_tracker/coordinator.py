@@ -141,7 +141,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
     @property
     def work_zone(self) -> str:
         zone = self.options[CONF_WORK_ZONE]
-        # Accept either "zone.otto_work" or "otto_work"
+        # Accept either "zone.your_work_zone" or "your_work_zone"
         if "." not in zone:
             zone = f"zone.{zone}"
         return zone
@@ -153,7 +153,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
 
     @property
     def notify_service(self) -> str | None:
-        """Return notify service like 'mobile_app_otto_phone' (without notify. prefix)."""
+        """Return notify service like 'mobile_app_your_phone' (without notify. prefix)."""
         svc = self.options.get(CONF_NOTIFY_SERVICE)
         if not svc:
             return None

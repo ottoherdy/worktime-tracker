@@ -3,157 +3,217 @@
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
 [![Validate](https://github.com/ottoherdy/worktime-tracker/actions/workflows/validate.yml/badge.svg)](https://github.com/ottoherdy/worktime-tracker/actions/workflows/validate.yml)
 
-A complete **Home Assistant custom integration** for automatic work time tracking. Everything runs inside a single integration — no automations, no manual setup. Fully configurable through the UI.
+A complete **Home Assistant custom integration** for automatic work time tracking. Everything runs inside a single integration — no external automations or manual setup required. Fully configurable through the UI.
 
-## Features
+---
 
-- **Automatic time tracking** via a zone — arrival and departure logged automatically
-- **Lunch notification** with Yes/No buttons — your answer adjusts the planned end time
-- **Daily log to Google Sheets** with weekday, times, hours, and quarter-rounded hours
-- **Dashboard** with weekly overview, bar chart (this week vs last week), and the 5 most recent days
-- **Scriptable widget** for iOS showing time remaining or overtime as a progress circle
+## How it works
 
-## Repository structure
+The integration tracks a **person entity** (your phone / GPS). When you enter your configured work zone, arrival is logged. When you leave the zone after your configured auto-departure time (or press the button manually), departure is logged. Time counts continuously between arrival and departure regardless of brief zone exits (lunch runs, errands, etc.).
 
-```
-worktime-tracker/
-├── custom_components/worktime_tracker/   ← the integration (HACS installs this)
-├── dashboards/dashboard.yaml             ← Lovelace view
-├── scriptable/worktime_widget.js         ← iOS widget
-├── hacs.json                             ← HACS metadata
-└── .github/workflows/validate.yml        ← hassfest + HACS validation
-```
+Each workday stores: arrival, departure, lunch status, hours worked, and overtime.
+
+---
 
 ## Installation
 
-### Step 1 — Install via HACS
+### 1 — Install via HACS
 
-1. Open HACS in Home Assistant
+1. Open **HACS** in Home Assistant
 2. **Integrations** → three dots top right → **Custom repositories**
 3. Add URL: `https://github.com/ottoherdy/worktime-tracker`, category: **Integration**
 4. Search for **Worktime Tracker** → **Download**
 5. Restart Home Assistant
 
-### Step 2 — Configure
+### 2 — Configure
 
-`Settings → Devices & Services → + Add Integration → "Worktime Tracker"`
+Go to **Settings → Devices & Services → + Add Integration → Worktime Tracker**
 
-| Field | Example | Description |
+| Setting | Default | Description |
 |---|---|---|
-| Person or device tracker | `person.your_name` | The person being tracked |
-| Work zone | `zone.work` | Being inside this zone counts as "at work" |
-| Notify service | `mobile_app_your_phone` | Without the `notify.` prefix. Leave empty for no lunch notification |
+| Person entity | — | The `person.*` or `device_tracker.*` to track |
+| Work zone | — | HA zone that counts as "at work" |
+| Notify service | — | Mobile notification service (e.g. `mobile_app_your_phone`, without `notify.` prefix). Leave empty to disable lunch notifications |
 | Lunch check time | `13:00` | When the lunch push notification is sent |
-| Workday length | `8.5` | Including lunch (8h net work + 0.5h lunch) |
-| Lunch break | `0.5` | Deducted when answering "No" to the lunch prompt |
-| Weekly target | `40` | Used for overtime calculation |
-| Assume lunch if no answer | On | At departure with no answer: count lunch as taken |
+| Workday length | `8.5 h` | Full workday including lunch break |
+| Lunch deduction | `0.5 h` | Deducted when lunch is answered "No" |
+| Weekly target | `40 h` | Used for weekly overtime calculation |
+| Assume lunch if no answer | On | At departure with no notification reply: assume lunch was taken |
+| Auto departure | Off | Enable zone-exit based automatic departure |
+| Auto departure time | `15:00` | Zone exits before this time are ignored (e.g. lunch runs). Zone exits at or after this time trigger automatic departure |
+| Auto export to Sheets | On | Automatically send the day to Google Sheets after departure |
+| Auto export delay | `3 h` | How long after departure to wait before sending |
+| Google Sheets config entry | — | Config Entry ID of your Google Sheets integration |
+| Sheets worksheet | `Worktime` | Name of the worksheet to write to |
 
-All settings can be changed later via **Configure** on the integration.
+All settings can be changed later under **Configure** on the integration card.
 
-### Step 3 — Add the dashboard
+### 3 — Add the dashboard
 
-Open `dashboards/dashboard.yaml` and paste it into a new or existing Lovelace dashboard.
+Open `dashboards/dashboard.yaml`, replace `person.your_person` with your own person entity, and paste the content into a new Lovelace view.
 
-Requires two HACS frontend cards:
-- [ApexCharts Card](https://github.com/RomRider/apexcharts-card)
-- [Mushroom](https://github.com/piitaya/lovelace-mushroom)
+Required HACS frontend cards:
+- [Bubble Card](https://github.com/Clooos/Bubble-Card)
+- [Flex Table Card](https://github.com/custom-cards/flex-table-card)
 
-### Step 4 — Google Sheets (optional)
+### 4 — Google Sheets (optional)
 
-Requires the official [Google Sheets integration](https://www.home-assistant.io/integrations/google_sheets/) to be installed in Home Assistant.
-
-1. Install **Google Sheets** via `Settings → Devices & Services → + Add Integration`
+1. Install the official **Google Sheets** integration via **Settings → Devices & Services → + Add Integration**
 2. Authenticate with your Google account
-3. Go to **Configure** on the Worktime Tracker integration
-4. Enter the **Config Entry ID** for the Google Sheets integration and a **worksheet name**
+3. Copy the **Config Entry ID** from the integration (visible in the URL when you open it)
+4. Paste it into the Worktime Tracker configuration
 
-Each day a row is automatically appended with the following columns:
+The integration appends one row per day with these columns:
 
-| Column | Example |
+| Column | Example | Notes |
+|---|---|---|
+| Date | `2026-04-28` | ISO format |
+| Weekday | `Monday` | Full name |
+| Type | `Normal` / `Sick` | |
+| Arrival | `08:12` | HH:MM |
+| Planned end | `16:42` | HH:MM |
+| Departure | `16:38` | HH:MM |
+| Lunch | `yes` / `no` | |
+| Hours | `8.43` | Exact float |
+| Hours (rounded) | `8.50h` | Rounded up to nearest 15 min |
+| Overtime | `0.43` | Hours vs daily target |
+| Edited | `yes` / `no` | Marked when sent via edit_day |
+
+> **Note:** Format the `Hours` and `Overtime` columns in Google Sheets as **Number** (not Automatic) to avoid them being interpreted as dates.
+
+---
+
+## Features
+
+### Automatic arrival & departure
+
+- Arrival logged when you enter the work zone (first time per day)
+- Time runs continuously — brief zone exits (lunch, errands) do not stop the clock
+- Departure logged when you leave the zone **at or after** the configured auto-departure time (if the toggle is on), or manually via the dashboard button
+
+### Lunch tracking
+
+- A push notification is sent at the configured time asking "Did you have lunch today?"
+- Answering **Yes** keeps the full workday length
+- Answering **No** subtracts the lunch deduction from the total
+- No answer → the "assume lunch" setting decides at departure
+
+### Manual controls (dashboard buttons)
+
+| Button | Action |
 |---|---|
-| Date | 2026-04-28 |
-| Weekday | Monday |
-| Arrival | 08:12 |
-| Planned end | 16:42 |
-| Departure | 16:38 |
-| Lunch | yes |
-| Hours | 8.43 |
-| Hours (rounded) | 8.5 |
+| Log arrival | Register arrival right now |
+| Log departure | Register departure right now |
+| Lunch — Yes | Mark lunch as taken |
+| Lunch — No | Mark lunch as not taken |
+| Edit day | Change arrival, departure, or lunch for any date |
+| Sick day | Log a sick day (custom hours or full day) |
+| Send to Sheets | Manually send today's row |
+| Reset today | Clear today's data and start over |
+| Auto departure toggle | Enable/disable the auto-departure feature |
 
-### Step 5 — Scriptable iOS widget (optional)
+### Sick days
 
-1. Install [Scriptable](https://apps.apple.com/app/scriptable/id1405459188)
-2. Create a new script and paste in `scriptable/worktime_widget.js`
-3. Set `HA_URL` and `HA_TOKEN` (create a Long-Lived Token: HA profile → Security)
-4. Add a Scriptable widget to your home screen, **Medium** size
+Call `worktime_tracker.log_sick_day` or tap the **Sick day** button on the dashboard.
+
+- Counts toward hours and overtime just like a worked day
+- Sent to Google Sheets with `Type: Sick`
+- Supports partial days — specify `hours` or leave empty for a full workday
+
+### Edit any day
+
+Call `worktime_tracker.edit_day` or use the **Edit day** button. Lets you correct arrival, departure, or lunch for any historical date. The updated row is automatically sent to Google Sheets marked as `Edited: yes`.
+
+### Auto export to Sheets
+
+After departure is logged, a timer starts (configurable, default 3 hours). When the timer fires, the day is automatically sent to Google Sheets. This gives you time to correct anything before the row is written.
+
+You can also send manually at any time using the **Send to Sheets** button.
+
+### Day rollover
+
+At 03:00 each night the integration resets for the new day. If no departure was registered (e.g. GPS didn't trigger), the day is left as-is in history with 0 hours — you can correct it later with **Edit day**.
+
+---
 
 ## Entities
 
+### Sensors
+
+| Entity | State | Key attributes |
+|---|---|---|
+| `sensor.today_hours_today` | Hours worked today (float) | `arrival`, `departure`, `planned_end`, `lunch`, `human_readable`, `overtime`, `time_remaining`, `status`, `recent_days` (last 60 days) |
+| `sensor.today_status` | `off_duty` / `at_work` / `overtime` / `done` | — |
+| `sensor.this_week_hours_this_week` | Total hours this ISO week | `hours`, `overtime`, `weekly_target`, `days` (Mon–Fri breakdown) |
+| `sensor.last_week_hours_last_week` | Total hours last ISO week | `hours`, `overtime`, `days` |
+| `sensor.this_month_hours_this_month` | Total hours this calendar month | `hours`, `human_readable`, `overtime`, `month` |
+| `sensor.last_month_hours_last_month` | Total hours last calendar month | `hours`, `human_readable`, `overtime`, `month` |
+
+Each entry in the `days` attribute list contains: `date`, `weekday`, `arrival`, `departure`, `lunch`, `hours`, `human_readable`.
+
+### Binary sensors
+
+| Entity | On when |
+|---|---|
+| `binary_sensor.today_at_work` | Status is `at_work` or `overtime` |
+| `binary_sensor.today_day_complete` | Status is `done` |
+
+### Switch
+
 | Entity | Description |
 |---|---|
-| `sensor.worktime_tracker_arrival_time` | Arrival (timestamp) |
-| `sensor.worktime_tracker_planned_end_time` | Planned end time |
-| `sensor.worktime_tracker_departure_time` | Departure time |
-| `sensor.worktime_tracker_hours_today` | Hours worked today |
-| `sensor.worktime_tracker_hours_week` | Weekly total + attributes `this_week`, `last_week`, `recent_days` |
-| `sensor.worktime_tracker_overtime_week` | Overtime against the weekly target |
-| `sensor.worktime_tracker_time_remaining` | Minutes remaining (+ `human_readable` attribute) |
-| `sensor.worktime_tracker_status` | `off_duty` / `at_work` / `done` / `overtime` |
-| `sensor.worktime_tracker_lunch_status` | `yes` / `no` / `unknown` |
-| `binary_sensor.worktime_tracker_at_work` | Currently at work |
-| `binary_sensor.worktime_tracker_day_complete` | Day finished |
+| `switch.today_auto_departure` | Toggle auto-departure on/off from the dashboard |
+
+---
 
 ## Services
 
-| Service | Data | Description |
+| Service | Fields | Description |
 |---|---|---|
+| `worktime_tracker.log_arrival` | — | Register arrival right now |
+| `worktime_tracker.log_departure` | — | Register departure right now |
 | `worktime_tracker.set_lunch` | `had_lunch: true/false` | Set lunch status |
-| `worktime_tracker.log_arrival` | – | Manually register arrival |
-| `worktime_tracker.log_departure` | – | Manually register departure |
-| `worktime_tracker.reset_today` | – | Clear today's data |
-| `worktime_tracker.export_history` | – | Re-send today's row to Sheets |
+| `worktime_tracker.reset_today` | — | Clear today's data |
+| `worktime_tracker.export_history` | — | Send today's row to Google Sheets now |
+| `worktime_tracker.edit_day` | `date` (optional), `arrival` HH:MM, `departure` HH:MM, `lunch` yes/no | Edit any historical day. Sends updated row to Sheets marked as edited. |
+| `worktime_tracker.log_sick_day` | `date` (optional), `hours` (optional) | Log a sick day. Defaults to today and full workday if not specified. |
 
-## How it works
+---
 
-```
-Person enters the work zone
-        ↓
-arrival = now,  planned_end = arrival + workday length
+## Status values
 
-At 13:00 if still at work → push: [Yes, had lunch] [No]
-   "No" → planned_end -= lunch break
-   No answer → "assume lunch" flag decides at departure
-
-Person leaves the zone
-        ↓
-1) Calculate hours worked (minus lunch if "Yes")
-2) Save to local HA storage
-3) Append row to Google Sheets (if configured)
-4) Update all sensors
-```
-
-### Status values
-
-| Status | When |
+| Status | Meaning |
 |---|---|
 | `off_duty` | No arrival registered today |
-| `at_work` | Arrived, planned end not passed, no departure |
-| `overtime` | Still at work past planned end time |
-| `done` | Departure registered |
+| `at_work` | Arrived, planned end not yet passed |
+| `overtime` | Still at work past the planned end time |
+| `done` | Departure has been registered |
+
+---
 
 ## Troubleshooting
 
 | Symptom | Solution |
 |---|---|
-| Lunch notification not arriving | Check that `notify_service` is set without the `notify.` prefix |
-| Rows not appearing in Sheets | Verify the Google Sheets integration is installed and the Config Entry ID is correct |
-| ApexCharts chart is empty | The sensor needs at least one completed day in its history |
-| Scriptable widget shows error | Check that `HA_URL` and `HA_TOKEN` are correctly filled in |
+| Arrival not logged automatically | Check that the person entity state matches the zone name (case-insensitive). Enable debug logging for `custom_components.worktime_tracker` to see state change events. |
+| Lunch notification not arriving | Verify `notify_service` is set without the `notify.` prefix |
+| Rows not appearing in Sheets | Check that the Google Sheets integration is installed and the Config Entry ID is correct |
+| Hours column shows as a date in Sheets | Format the column as **Number** in Google Sheets |
+| Planned end time wrong after editing arrival | Reload the integration after editing |
 
-## Contributing
+---
 
-PRs welcome. CI runs `hassfest`, HACS validation, and a Python compile check on every push.
+## Repository structure
+
+```
+worktime-tracker/
+├── custom_components/worktime_tracker/   ← integration (HACS installs this)
+├── dashboards/dashboard.yaml             ← example Lovelace view
+├── hacs.json                             ← HACS metadata
+└── .github/workflows/validate.yml        ← hassfest + HACS validation
+```
+
+---
 
 ## License
 

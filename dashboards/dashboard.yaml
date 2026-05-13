@@ -491,7 +491,7 @@ sections:
         scrolling_effect: false
       - type: custom:bubble-card
         card_type: button
-        entity: person.ottoherdy
+        entity: person.your_person
         icon: mdi:alpha-o-circle-outline
         name: ""
         card_layout: small
