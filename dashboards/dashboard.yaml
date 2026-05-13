@@ -266,6 +266,80 @@ sections:
         grid_options:
           columns: 6
           rows: auto
+      - type: custom:bubble-card
+        card_type: sub-buttons
+        sub_button:
+          main: []
+          bottom:
+            - name: This month
+              show_name: true
+              icon: mdi:calendar-month
+              scrolling_effect: false
+              state_background: true
+              show_background: true
+            - entity: sensor.this_month_hours_this_month
+              show_name: false
+              show_state: false
+              show_attribute: true
+              attribute: hours
+              show_background: true
+              state_background: false
+            - entity: sensor.this_month_hours_this_month
+              show_name: false
+              show_state: false
+              show_attribute: true
+              attribute: overtime
+              icon: mdi:clock-plus-outline
+              show_background: true
+              state_background: false
+        rows: 0.938
+        grid_options:
+          columns: 6
+          rows: auto
+        hide_main_background: true
+        card_layout: normal
+        styles: |
+          .bubble-sub-button-container {
+            padding: 0px 1px;
+            gap: 1px;
+          }
+      - type: custom:bubble-card
+        card_type: sub-buttons
+        sub_button:
+          main: []
+          bottom:
+            - name: Last month
+              show_name: true
+              icon: mdi:calendar-month
+              scrolling_effect: false
+              state_background: true
+              show_background: true
+            - entity: sensor.last_month_hours_last_month
+              show_name: false
+              show_state: false
+              show_attribute: true
+              attribute: hours
+              show_background: true
+              state_background: false
+            - entity: sensor.last_month_hours_last_month
+              show_name: false
+              show_state: false
+              show_attribute: true
+              attribute: overtime
+              icon: mdi:clock-plus-outline
+              show_background: true
+              state_background: false
+        rows: 0.938
+        grid_options:
+          columns: 6
+          rows: auto
+        hide_main_background: true
+        card_layout: normal
+        styles: |
+          .bubble-sub-button-container {
+            padding: 0px 1px;
+            gap: 1px;
+          }
 
   # --- Quick actions ---
   - type: grid
@@ -454,5 +528,23 @@ sections:
           rows: 1
         tap_action:
           action: toggle
+        hold_action:
+          action: more-info
+      - type: custom:bubble-card
+        card_type: button
+        button_type: button
+        entity: sensor.today_status
+        icon: mdi:medical-bag
+        name: Sick day
+        card_layout: small
+        show_state: false
+        modules:
+          - "!default"
+        grid_options:
+          columns: 4
+          rows: 1
+        tap_action:
+          action: call-service
+          service: worktime_tracker.log_sick_day
         hold_action:
           action: more-info

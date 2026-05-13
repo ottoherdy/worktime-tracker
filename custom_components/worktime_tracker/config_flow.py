@@ -13,6 +13,8 @@ from homeassistant.helpers import selector
 from .const import (
     CONF_AUTO_DEPARTURE_ENABLED,
     CONF_AUTO_DEPARTURE_TIME,
+    CONF_AUTO_EXPORT_DELAY_HOURS,
+    CONF_AUTO_EXPORT_ENABLED,
     CONF_AUTO_LUNCH_DEFAULT,
     CONF_LUNCH_DEDUCTION,
     CONF_LUNCH_TIME,
@@ -25,6 +27,8 @@ from .const import (
     CONF_WORKDAY_HOURS,
     DEFAULT_AUTO_DEPARTURE_ENABLED,
     DEFAULT_AUTO_DEPARTURE_TIME,
+    DEFAULT_AUTO_EXPORT_DELAY_HOURS,
+    DEFAULT_AUTO_EXPORT_ENABLED,
     DEFAULT_AUTO_LUNCH_DEFAULT,
     DEFAULT_LUNCH_DEDUCTION,
     DEFAULT_LUNCH_TIME,
@@ -107,6 +111,19 @@ def _build_user_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
                 CONF_AUTO_DEPARTURE_TIME,
                 default=defaults.get(CONF_AUTO_DEPARTURE_TIME, DEFAULT_AUTO_DEPARTURE_TIME),
             ): selector.TimeSelector(),
+            vol.Required(
+                CONF_AUTO_EXPORT_ENABLED,
+                default=defaults.get(CONF_AUTO_EXPORT_ENABLED, DEFAULT_AUTO_EXPORT_ENABLED),
+            ): selector.BooleanSelector(),
+            vol.Required(
+                CONF_AUTO_EXPORT_DELAY_HOURS,
+                default=defaults.get(CONF_AUTO_EXPORT_DELAY_HOURS, DEFAULT_AUTO_EXPORT_DELAY_HOURS),
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=0.5, max=12, step=0.5, mode=selector.NumberSelectorMode.BOX,
+                    unit_of_measurement="h",
+                )
+            ),
         }
     )
 

@@ -58,3 +58,14 @@ edit_day:
           options:
             - "yes"
             - "no"
+
+log_sick_day:
+  name: Log sick day
+  description: Mark a day as sick leave. Counts as a full workday and is sent to Sheets with Type = Sick.
+  fields:
+    date:
+      name: Date
+      description: The date to mark as sick. Leave empty for today.
+      required: false
+      selector:
+        date:

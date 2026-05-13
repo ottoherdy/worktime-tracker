@@ -47,6 +47,8 @@ async def async_setup_entry(
         StatusSensor(coordinator, entry),
         ThisWeekSensor(coordinator, entry),
         LastWeekSensor(coordinator, entry),
+        ThisMonthSensor(coordinator, entry),
+        LastMonthSensor(coordinator, entry),
     ])
 
 
@@ -103,7 +105,7 @@ class TodaySensor(_Base):
             "overtime": c.overtime_today(),
             "time_remaining": time_remaining,
             "status": c.status(),
-            "recent_days": c.recent_days(14),
+            "recent_days": c.recent_days(28),
         }
 
 
@@ -171,4 +173,68 @@ class LastWeekSensor(_Base):
             "hours": self.coordinator.hours_worked_last_week(),
             "overtime": self.coordinator.overtime_last_week(),
             "days": self.coordinator.week_breakdown(weeks_back=1),
+        }
+
+
+class ThisMonthSensor(_Base):
+    _key = "hours_this_month"
+    _attr_name = "Hours this month"
+    _attr_native_unit_of_measurement = UnitOfTime.HOURS
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = "mdi:calendar-month"
+    _attr_suggested_display_precision = 2
+
+    def __init__(self, coordinator: WorktimeCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry)
+        self._attr_device_info = _device(entry, "this_month", "This Month", "Monthly tracking")
+
+    @property
+    def native_value(self) -> float:
+        today = dt_util.now().date()
+        return self.coordinator.hours_worked_in_month(today.year, today.month)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        today = dt_util.now().date()
+        hours = self.coordinator.hours_worked_in_month(today.year, today.month)
+        return {
+            "hours": hours,
+            "human_readable": _hours_to_human(hours),
+            "overtime": self.coordinator.overtime_this_month(),
+            "month": self.coordinator.month_name(0),
+        }
+
+
+class LastMonthSensor(_Base):
+    _key = "hours_last_month"
+    _attr_name = "Hours last month"
+    _attr_native_unit_of_measurement = UnitOfTime.HOURS
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = "mdi:calendar-month"
+    _attr_suggested_display_precision = 2
+
+    def __init__(self, coordinator: WorktimeCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry)
+        self._attr_device_info = _device(entry, "last_month", "Last Month", "Monthly tracking")
+
+    @property
+    def native_value(self) -> float:
+        today = dt_util.now().date()
+        if today.month == 1:
+            return self.coordinator.hours_worked_in_month(today.year - 1, 12)
+        return self.coordinator.hours_worked_in_month(today.year, today.month - 1)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        today = dt_util.now().date()
+        if today.month == 1:
+            year, month = today.year - 1, 12
+        else:
+            year, month = today.year, today.month - 1
+        hours = self.coordinator.hours_worked_in_month(year, month)
+        return {
+            "hours": hours,
+            "human_readable": _hours_to_human(hours),
+            "overtime": self.coordinator.overtime_last_month(),
+            "month": self.coordinator.month_name(1),
         }

@@ -24,6 +24,7 @@ def _hours_to_human(hours: float) -> str:
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant, State, callback
 from homeassistant.helpers.event import (
+    async_call_later,
     async_track_state_change_event,
     async_track_time_change,
 )
@@ -39,6 +40,8 @@ from .const import (
     NOTIFICATION_TAG_TIMEREPORT,
     CONF_AUTO_DEPARTURE_ENABLED,
     CONF_AUTO_DEPARTURE_TIME,
+    CONF_AUTO_EXPORT_DELAY_HOURS,
+    CONF_AUTO_EXPORT_ENABLED,
     CONF_AUTO_LUNCH_DEFAULT,
     CONF_LUNCH_DEDUCTION,
     CONF_LUNCH_TIME,
@@ -49,8 +52,12 @@ from .const import (
     CONF_WEEKLY_TARGET,
     CONF_WORK_ZONE,
     CONF_WORKDAY_HOURS,
+    DAY_TYPE_NORMAL,
+    DAY_TYPE_SICK,
     DEFAULT_AUTO_DEPARTURE_ENABLED,
     DEFAULT_AUTO_DEPARTURE_TIME,
+    DEFAULT_AUTO_EXPORT_DELAY_HOURS,
+    DEFAULT_AUTO_EXPORT_ENABLED,
     DEFAULT_AUTO_LUNCH_DEFAULT,
     DEFAULT_LUNCH_DEDUCTION,
     DEFAULT_LUNCH_TIME,
@@ -108,6 +115,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         self.day_logged: bool = False
         self.current_date: date = dt_util.now().date()
         self._auto_departure_enabled: bool = False
+        self._unsub_auto_export: Any = None
 
         # History: list of dicts { date, arrival, planned_end, departure, lunch, hours }
         self.history: list[dict[str, Any]] = []
@@ -195,6 +203,14 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         await self._async_save_history()
         self.async_set_updated_data(self.snapshot())
 
+    @property
+    def auto_export_enabled(self) -> bool:
+        return bool(self.options.get(CONF_AUTO_EXPORT_ENABLED, DEFAULT_AUTO_EXPORT_ENABLED))
+
+    @property
+    def auto_export_delay_hours(self) -> float:
+        return float(self.options.get(CONF_AUTO_EXPORT_DELAY_HOURS, DEFAULT_AUTO_EXPORT_DELAY_HOURS))
+
     # ------------------------------------------------------------------
     # Initialization / shutdown
     # ------------------------------------------------------------------
@@ -268,6 +284,9 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             except Exception:  # pylint: disable=broad-except
                 pass
         self._unsub_callbacks.clear()
+        if self._unsub_auto_export is not None:
+            self._unsub_auto_export()
+            self._unsub_auto_export = None
 
     # ------------------------------------------------------------------
     # DataUpdateCoordinator
@@ -419,6 +438,21 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         await self._async_save_today()
         self.async_set_updated_data(self.snapshot())
 
+        # Schedule auto-export after configured delay
+        if self.auto_export_enabled and self.sheets_entry_id:
+            if self._unsub_auto_export is not None:
+                self._unsub_auto_export()
+            delay = self.auto_export_delay_hours * 3600
+            self._unsub_auto_export = async_call_later(
+                self.hass, delay, self._async_auto_export_callback
+            )
+            _LOGGER.info("Worktime: auto-export scheduled in %.1fh", self.auto_export_delay_hours)
+
+    @callback
+    def _async_auto_export_callback(self, _now: datetime) -> None:
+        self._unsub_auto_export = None
+        self.hass.async_create_task(self._async_append_to_sheet())
+
     async def async_set_lunch(self, status: str) -> None:
         if status not in (LUNCH_YES, LUNCH_NO):
             return
@@ -500,6 +534,32 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             _LOGGER.info("Worktime: nothing to export for today")
             return
         await self._async_append_to_sheet()
+
+    async def async_log_sick_day(self, target_date: date) -> None:
+        """Log a sick day — counts as full workday, sent to Sheets with Type: Sick."""
+        target_iso = target_date.isoformat()
+        sick_hours = self.daily_net_target
+        entry: dict[str, Any] = {
+            "date": target_iso,
+            "arrival": None,
+            "planned_end": None,
+            "departure": None,
+            "lunch": LUNCH_YES,
+            "hours": sick_hours,
+            "type": DAY_TYPE_SICK,
+        }
+        replaced = False
+        for i, e in enumerate(self.history):
+            if e.get("date") == target_iso:
+                self.history[i] = entry
+                replaced = True
+                break
+        if not replaced:
+            self.history.append(entry)
+        await self._async_save_history()
+        self.async_set_updated_data(self.snapshot())
+        _LOGGER.info("Worktime: sick day logged for %s (%.2fh)", target_iso, sick_hours)
+        await self._async_append_to_sheet(entry=entry)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -750,6 +810,69 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             })
         return result
 
+    def hours_worked_in_month(self, year: int, month: int) -> float:
+        total = 0.0
+        for entry in self.history:
+            try:
+                d = date.fromisoformat(entry["date"])
+            except Exception:
+                continue
+            if d.year == year and d.month == month:
+                total += float(entry.get("hours", 0.0))
+        today = dt_util.now().date()
+        if today.year == year and today.month == month:
+            already_done = any(
+                e.get("date") == today.isoformat() and e.get("departure")
+                for e in self.history
+            )
+            if not already_done and self.arrival is not None:
+                total += self.hours_worked_today()
+        return round(total, 2)
+
+    def overtime_this_month(self) -> float:
+        today = dt_util.now().date()
+        days_with_work = 0
+        for entry in self.history:
+            try:
+                d = date.fromisoformat(entry["date"])
+            except Exception:
+                continue
+            if d.year == today.year and d.month == today.month:
+                if float(entry.get("hours", 0)) > 0:
+                    days_with_work += 1
+        already_done = any(
+            e.get("date") == today.isoformat() and e.get("departure")
+            for e in self.history
+        )
+        if not already_done and self.arrival is not None:
+            days_with_work += 1
+        expected = days_with_work * self.daily_net_target
+        return round(self.hours_worked_in_month(today.year, today.month) - expected, 2)
+
+    def overtime_last_month(self) -> float:
+        today = dt_util.now().date()
+        if today.month == 1:
+            year, month = today.year - 1, 12
+        else:
+            year, month = today.year, today.month - 1
+        days_with_work = sum(
+            1 for e in self.history
+            if (lambda d: d.year == year and d.month == month and float(e.get("hours", 0)) > 0)(
+                date.fromisoformat(e["date"])
+            ) if e.get("date")
+        )
+        expected = days_with_work * self.daily_net_target
+        return round(self.hours_worked_in_month(year, month) - expected, 2)
+
+    def month_name(self, months_back: int = 0) -> str:
+        today = dt_util.now().date()
+        month = today.month - months_back
+        year = today.year
+        while month < 1:
+            month += 12
+            year -= 1
+        return date(year, month, 1).strftime("%B %Y")
+
     def time_remaining_seconds(self) -> int:
         if self.arrival is None or self.planned_end is None:
             return 0
@@ -846,6 +969,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         self,
         entry: dict[str, Any] | None = None,
         edited: bool = False,
+        sick: bool = False,
     ) -> None:
         """Append a row to Google Sheets. Uses today's state when entry is None."""
         entry_id = self.sheets_entry_id
@@ -864,6 +988,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             departure = self.departure
             lunch = self.lunch_status
             hours = self.hours_worked_today()
+            day_type = DAY_TYPE_NORMAL
         else:
             try:
                 target_date = date.fromisoformat(entry["date"])
@@ -872,6 +997,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                 departure = datetime.fromisoformat(entry["departure"]) if entry.get("departure") else None
                 lunch = entry.get("lunch", LUNCH_UNKNOWN)
                 hours = float(entry.get("hours", 0.0))
+                day_type = entry.get("type", DAY_TYPE_SICK if sick else DAY_TYPE_NORMAL)
             except Exception as exc:  # pylint: disable=broad-except
                 _LOGGER.warning("Worktime: failed to parse entry for Sheets: %s", exc)
                 return
@@ -881,6 +1007,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         row = {
             "Date": target_date.isoformat(),
             "Weekday": _WEEKDAYS[target_date.weekday()],
+            "Type": "Sick" if day_type == DAY_TYPE_SICK else "Normal",
             "Arrival": self._format_time(arrival),
             "Planned end": self._format_time(planned_end),
             "Departure": self._format_time(departure),

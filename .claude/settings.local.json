@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/ottoherdy/Documents/Claude/Projects/ffgk-registry/**)",
+      "Bash(python3 -c \"import ast; ast.parse\\(open\\('server/app.py'\\).read\\(\\)\\); print\\('Syntax OK'\\)\")",
+      "Bash(python3 -c \"import json; d = json.load\\(open\\('server/users.json'\\)\\); print\\('keys:', list\\(d.keys\\(\\)\\)\\); print\\('users count:', len\\(d.get\\('users', []\\)\\)\\); print\\('first user keys:', list\\(d['users'][0].keys\\(\\)\\) if d.get\\('users'\\) else 'empty'\\)\")",
+      "Bash(python3 -c ' *)",
+      "Bash(python3 -c \"import ast; ast.parse\\(open\\('server/app.py'\\).read\\(\\)\\); ast.parse\\(open\\('cli/ffgk.py'\\).read\\(\\)\\); print\\('Syntax OK'\\)\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
+    ]
+  }
+}
