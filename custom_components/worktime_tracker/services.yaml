@@ -29,7 +29,7 @@ export_history:
 
 edit_day:
   name: Edit day
-  description: Edit arrival, departure or lunch for any date.
+  description: Edit arrival, departure or lunch for any date. Set type to Sick to log a sick day.
   fields:
     date:
       name: Date
@@ -37,27 +37,46 @@ edit_day:
       required: false
       selector:
         date:
+    type:
+      name: Type
+      description: Normal workday or sick day. Leave empty to keep existing type.
+      required: false
+      selector:
+        select:
+          options:
+            - "normal"
+            - "sick"
     arrival:
       name: Arrival
-      description: Arrival time
+      description: Arrival time (ignored for sick days).
       required: false
       selector:
         time:
     departure:
       name: Departure
-      description: Departure time
+      description: Departure time (ignored for sick days).
       required: false
       selector:
         time:
     lunch:
       name: Lunch
-      description: Did you have lunch? Leave unchecked to keep as unknown.
+      description: Did you have lunch? (ignored for sick days).
       required: false
       selector:
         select:
           options:
             - "yes"
             - "no"
+    hours:
+      name: Hours (sick day)
+      description: How many hours to count for a sick day. Leave empty for 8h.
+      required: false
+      selector:
+        number:
+          min: 0.5
+          max: 24
+          step: 0.5
+          unit_of_measurement: h
 
 log_sick_day:
   name: Log sick day

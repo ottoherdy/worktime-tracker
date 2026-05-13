@@ -1,0 +1,60 @@
+alias: Edit Worktime Day
+icon: mdi:calendar-edit
+fields:
+  date:
+    name: Date
+    description: The date to edit. Leave empty for today.
+    required: false
+    selector:
+      date:
+  type:
+    name: Type
+    description: Normal workday or sick day. Leave empty to keep as normal.
+    required: false
+    selector:
+      select:
+        options:
+          - label: Normal
+            value: normal
+          - label: Sick day
+            value: sick
+  arrival:
+    name: Arrival
+    description: Arrival time (ignored for sick days).
+    required: false
+    selector:
+      time:
+  departure:
+    name: Departure
+    description: Departure time (ignored for sick days).
+    required: false
+    selector:
+      time:
+  lunch:
+    name: Lunch
+    description: Did you have lunch? (ignored for sick days).
+    required: false
+    selector:
+      select:
+        options:
+          - "yes"
+          - "no"
+  hours:
+    name: Hours
+    description: Hours to count for a sick day. Leave empty for 8h.
+    required: false
+    selector:
+      number:
+        min: 0.5
+        max: 24
+        step: 0.5
+        unit_of_measurement: h
+sequence:
+  - action: worktime_tracker.edit_day
+    data:
+      date: "{{ date | default('') }}"
+      type: "{{ type | default('') }}"
+      arrival: "{{ arrival | default('') }}"
+      departure: "{{ departure | default('') }}"
+      lunch: "{{ lunch | default('') }}"
+      hours: "{{ hours | default('') }}"

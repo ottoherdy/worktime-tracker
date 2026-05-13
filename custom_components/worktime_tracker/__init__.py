@@ -115,15 +115,22 @@ async def _async_register_services(hass: HomeAssistant) -> None:
 
     async def handle_edit_day(call: ServiceCall) -> None:
         from datetime import date as date_type
-        raw_date = call.data.get("date")
+        raw_date = call.data.get("date") or None
         target = date_type.fromisoformat(raw_date) if raw_date else dt_util.now().date()
-        for coord in _get_coordinators(hass):
-            await coord.async_edit_day(
-                target_date=target,
-                arrival=call.data.get("arrival"),
-                departure=call.data.get("departure"),
-                lunch=call.data.get("lunch"),
-            )
+        day_type = call.data.get("type")
+        if day_type == "sick":
+            raw_hours = call.data.get("hours")
+            hours = float(raw_hours) if raw_hours not in (None, "") else None
+            for coord in _get_coordinators(hass):
+                await coord.async_log_sick_day(target_date=target, hours=hours)
+        else:
+            for coord in _get_coordinators(hass):
+                await coord.async_edit_day(
+                    target_date=target,
+                    arrival=call.data.get("arrival"),
+                    departure=call.data.get("departure"),
+                    lunch=call.data.get("lunch"),
+                )
 
     set_lunch_schema = vol.Schema({vol.Optional("had_lunch", default=True): cv.boolean})
 
@@ -136,10 +143,12 @@ async def _async_register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(DOMAIN, SERVICE_EXPORT_HISTORY, handle_export_history)
 
     edit_day_schema = vol.Schema({
-        vol.Optional("date"): cv.string,
+        vol.Optional("date"): vol.Any(None, cv.string),
         vol.Optional("arrival"): cv.string,
         vol.Optional("departure"): cv.string,
         vol.Optional("lunch"): vol.In([LUNCH_YES, LUNCH_NO, LUNCH_UNKNOWN]),
+        vol.Optional("type"): vol.In(["normal", "sick"]),
+        vol.Optional("hours"): vol.Any(None, vol.Coerce(float)),
     })
     hass.services.async_register(DOMAIN, SERVICE_EDIT_DAY, handle_edit_day, schema=edit_day_schema)
 
