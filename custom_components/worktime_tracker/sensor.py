@@ -11,11 +11,13 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTime
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
+from datetime import timedelta
 
 from .const import DOMAIN
 from .coordinator import WorktimeCoordinator
@@ -41,7 +43,7 @@ def _device(entry: ConfigEntry, suffix: str, name: str, model: str) -> DeviceInf
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    coordinator: WorktimeCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator: WorktimeCoordinator = entry.runtime_data
     async_add_entities([
         TodaySensor(coordinator, entry),
         StatusSensor(coordinator, entry),
@@ -63,6 +65,8 @@ class _Base(CoordinatorEntity[WorktimeCoordinator], SensorEntity):
 
 
 class TodaySensor(_Base):
+    """Main daily sensor. Self-ticks every 30 s for live countdown."""
+
     _key = "hours_today"
     _attr_name = "Hours today"
     _attr_native_unit_of_measurement = UnitOfTime.HOURS
@@ -73,6 +77,26 @@ class TodaySensor(_Base):
     def __init__(self, coordinator: WorktimeCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry)
         self._attr_device_info = _device(entry, "today", "Today", "Daily tracking")
+        self._unsub_tick = None
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        # Self-tick every 30 s so countdown updates without coordinator push
+        self._unsub_tick = async_track_time_interval(
+            self.hass,
+            self._handle_tick,
+            timedelta(seconds=30),
+        )
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self._unsub_tick is not None:
+            self._unsub_tick()
+            self._unsub_tick = None
+        await super().async_will_remove_from_hass()
+
+    @callback
+    def _handle_tick(self, _now: datetime) -> None:
+        self.async_write_ha_state()
 
     @property
     def native_value(self) -> float:
@@ -106,6 +130,7 @@ class TodaySensor(_Base):
             "time_remaining": time_remaining,
             "status": c.status(),
             "recent_days": c.recent_days(60),
+            "daily_net_target": c.daily_net_target,
         }
 
 

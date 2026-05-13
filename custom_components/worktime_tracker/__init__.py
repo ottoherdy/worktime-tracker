@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
@@ -15,9 +16,8 @@ from .const import (
     SERVICE_LOG_ARRIVAL,
     SERVICE_LOG_DEPARTURE,
     SERVICE_RESET_TODAY,
-    SERVICE_EXPORT_HISTORY,
+    SERVICE_EXPORT_TODAY,
     SERVICE_EDIT_DAY,
-    SERVICE_LOG_SICK_DAY,
     LUNCH_YES,
     LUNCH_NO,
     LUNCH_UNKNOWN,
@@ -30,10 +30,22 @@ PLATFORMS: list[str] = ["sensor", "binary_sensor", "switch"]
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
+# Path to the bundled Lovelace card JS
+_WWW_DIR = os.path.join(os.path.dirname(__file__), "www")
+_CARD_FILENAME = "worktime-tracker-card.js"
+
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
-    """Set up the integration (yaml not supported, only config entries)."""
-    hass.data.setdefault(DOMAIN, {})
+    """Register static www path and Lovelace module URL."""
+    hass.http.register_static_path(
+        f"/{DOMAIN}_www",
+        _WWW_DIR,
+        cache_headers=False,
+    )
+    # Register the card JS so it loads automatically in the frontend
+    hass.components.frontend.async_register_extra_module_url(
+        f"/{DOMAIN}_www/{_CARD_FILENAME}"
+    )
     return True
 
 
@@ -42,12 +54,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = WorktimeCoordinator(hass, entry)
     await coordinator.async_initialize()
 
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = coordinator
+    # Store coordinator on entry.runtime_data (HA 2024.x+)
+    entry.runtime_data = coordinator
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # Register services (only once globally)
+    # Register services only once globally
     if not hass.services.has_service(DOMAIN, SERVICE_SET_LUNCH):
         await _async_register_services(hass)
 
@@ -60,19 +72,23 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
-        coordinator: WorktimeCoordinator = hass.data[DOMAIN].pop(entry.entry_id)
+        coordinator: WorktimeCoordinator = entry.runtime_data
         await coordinator.async_shutdown()
 
         # Remove services if no entries left
-        if not hass.data[DOMAIN]:
+        remaining = [
+            e
+            for e in hass.config_entries.async_entries(DOMAIN)
+            if e.entry_id != entry.entry_id and e.state.recoverable
+        ]
+        if not remaining:
             for service in (
                 SERVICE_SET_LUNCH,
                 SERVICE_LOG_ARRIVAL,
                 SERVICE_LOG_DEPARTURE,
                 SERVICE_RESET_TODAY,
-                SERVICE_EXPORT_HISTORY,
+                SERVICE_EXPORT_TODAY,
                 SERVICE_EDIT_DAY,
-                SERVICE_LOG_SICK_DAY,
             ):
                 if hass.services.has_service(DOMAIN, service):
                     hass.services.async_remove(DOMAIN, service)
@@ -86,7 +102,14 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
 
 
 def _get_coordinators(hass: HomeAssistant) -> list[WorktimeCoordinator]:
-    return list(hass.data.get(DOMAIN, {}).values())
+    """Return all active coordinators from runtime_data."""
+    coordinators = []
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        if hasattr(entry, "runtime_data") and isinstance(
+            entry.runtime_data, WorktimeCoordinator
+        ):
+            coordinators.append(entry.runtime_data)
+    return coordinators
 
 
 async def _async_register_services(hass: HomeAssistant) -> None:
@@ -109,27 +132,33 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         for coord in _get_coordinators(hass):
             await coord.async_reset_today()
 
-    async def handle_export_history(call: ServiceCall) -> None:
+    async def handle_export_today(call: ServiceCall) -> None:
         for coord in _get_coordinators(hass):
-            await coord.async_export_history()
+            await coord.async_export_today()
 
     async def handle_edit_day(call: ServiceCall) -> None:
         from datetime import date as date_type
         raw_date = call.data.get("date") or None
         target = date_type.fromisoformat(raw_date) if raw_date else dt_util.now().date()
         day_type = call.data.get("type")
-        if day_type == "sick":
-            raw_hours = call.data.get("hours")
-            hours = float(raw_hours) if raw_hours not in (None, "") else None
-            for coord in _get_coordinators(hass):
-                await coord.async_log_sick_day(target_date=target, hours=hours)
-        else:
-            for coord in _get_coordinators(hass):
+        raw_hours = call.data.get("hours")
+        hours = float(raw_hours) if raw_hours not in (None, "") else None
+
+        for coord in _get_coordinators(hass):
+            if day_type == "sick":
+                await coord.async_edit_day(
+                    target_date=target,
+                    day_type="sick",
+                    hours=hours,
+                )
+            else:
                 await coord.async_edit_day(
                     target_date=target,
                     arrival=call.data.get("arrival"),
                     departure=call.data.get("departure"),
                     lunch=call.data.get("lunch"),
+                    day_type=day_type,
+                    hours=hours,
                 )
 
     set_lunch_schema = vol.Schema({vol.Optional("had_lunch", default=True): cv.boolean})
@@ -140,7 +169,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(DOMAIN, SERVICE_LOG_ARRIVAL, handle_log_arrival)
     hass.services.async_register(DOMAIN, SERVICE_LOG_DEPARTURE, handle_log_departure)
     hass.services.async_register(DOMAIN, SERVICE_RESET_TODAY, handle_reset_today)
-    hass.services.async_register(DOMAIN, SERVICE_EXPORT_HISTORY, handle_export_history)
+    hass.services.async_register(DOMAIN, SERVICE_EXPORT_TODAY, handle_export_today)
 
     edit_day_schema = vol.Schema({
         vol.Optional("date"): vol.Any(None, cv.string),
@@ -150,19 +179,6 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         vol.Optional("type"): vol.In(["normal", "sick"]),
         vol.Optional("hours"): vol.Any(None, vol.Coerce(float)),
     })
-    hass.services.async_register(DOMAIN, SERVICE_EDIT_DAY, handle_edit_day, schema=edit_day_schema)
-
-    async def handle_log_sick_day(call: ServiceCall) -> None:
-        from datetime import date as date_type
-        raw_date = call.data.get("date") or None  # treat empty string as None
-        target = date_type.fromisoformat(raw_date) if raw_date else dt_util.now().date()
-        raw_hours = call.data.get("hours")
-        hours = float(raw_hours) if raw_hours not in (None, "") else None
-        for coord in _get_coordinators(hass):
-            await coord.async_log_sick_day(target_date=target, hours=hours)
-
-    sick_day_schema = vol.Schema({
-        vol.Optional("date"): vol.Any(None, cv.string),
-        vol.Optional("hours"): vol.Any(None, vol.Coerce(float)),
-    })
-    hass.services.async_register(DOMAIN, SERVICE_LOG_SICK_DAY, handle_log_sick_day, schema=sick_day_schema)
+    hass.services.async_register(
+        DOMAIN, SERVICE_EDIT_DAY, handle_edit_day, schema=edit_day_schema
+    )

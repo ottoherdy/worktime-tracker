@@ -19,8 +19,8 @@ from .const import (
     CONF_LUNCH_DEDUCTION,
     CONF_LUNCH_TIME,
     CONF_NOTIFY_SERVICE,
-    CONF_PERSON_ENTITY,
-    CONF_SHEETS_ENTRY,
+    CONF_PERSON,
+    CONF_SHEETS_ENTRY_ID,
     CONF_SHEETS_WORKSHEET,
     CONF_WEEKLY_TARGET,
     CONF_WORK_ZONE,
@@ -44,7 +44,7 @@ def _build_user_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
     return vol.Schema(
         {
             vol.Required(
-                CONF_PERSON_ENTITY, default=defaults.get(CONF_PERSON_ENTITY)
+                CONF_PERSON, default=defaults.get(CONF_PERSON)
             ): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain=["person", "device_tracker"])
             ),
@@ -89,7 +89,7 @@ def _build_user_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
                 )
             ),
             vol.Optional(
-                CONF_SHEETS_ENTRY, default=defaults.get(CONF_SHEETS_ENTRY, "")
+                CONF_SHEETS_ENTRY_ID, default=defaults.get(CONF_SHEETS_ENTRY_ID, "")
             ): selector.ConfigEntrySelector(
                 selector.ConfigEntrySelectorConfig(integration="google_sheets")
             ),
