@@ -538,7 +538,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
     async def async_log_sick_day(self, target_date: date, hours: float | None = None) -> None:
         """Log a sick day — sent to Sheets with Type: Sick."""
         target_iso = target_date.isoformat()
-        sick_hours = hours if hours is not None else self.daily_net_target
+        sick_hours = hours if hours is not None else 8.0
         entry: dict[str, Any] = {
             "date": target_iso,
             "arrival": None,
