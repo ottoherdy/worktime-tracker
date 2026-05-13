@@ -3,11 +3,11 @@
   "name": "Worktime Tracker",
   "codeowners": ["@ottoherdy"],
   "config_flow": true,
-  "dependencies": ["zone", "person"],
+  "dependencies": ["zone", "person", "frontend"],
   "documentation": "https://github.com/ottoherdy/worktime-tracker",
   "integration_type": "service",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/ottoherdy/worktime-tracker/issues",
   "requirements": [],
-  "version": "1.1.0"
+  "version": "2.0.0"
 }

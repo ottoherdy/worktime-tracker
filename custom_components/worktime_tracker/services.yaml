@@ -4,7 +4,7 @@ set_lunch:
   fields:
     had_lunch:
       name: Had lunch
-      description: "True = lunch taken (full workday), False = no lunch (-30 min)"
+      description: "True = lunch taken, False = no lunch (no deduction)"
       required: false
       default: true
       example: true
@@ -23,13 +23,15 @@ reset_today:
   name: Reset today
   description: Clear today's registrations and start over.
 
-export_history:
+export_today:
   name: Export today to Sheets
-  description: Re-send today's row to the configured Google Sheets.
+  description: Re-send today's row to the configured Google Sheets worksheet.
 
 edit_day:
   name: Edit day
-  description: Edit arrival, departure or lunch for any date. Set type to Sick to log a sick day.
+  description: >
+    Edit arrival, departure or lunch for any date.
+    Set type to "sick" to log a sick day (handled via leave_records).
   fields:
     date:
       name: Date
@@ -48,13 +50,13 @@ edit_day:
             - "sick"
     arrival:
       name: Arrival
-      description: Arrival time (ignored for sick days).
+      description: Arrival time HH:MM (ignored for sick days).
       required: false
       selector:
         time:
     departure:
       name: Departure
-      description: Departure time (ignored for sick days).
+      description: Departure time HH:MM (ignored for sick days).
       required: false
       selector:
         time:
@@ -69,28 +71,7 @@ edit_day:
             - "no"
     hours:
       name: Hours (sick day)
-      description: How many hours to count for a sick day. Leave empty for 8h.
-      required: false
-      selector:
-        number:
-          min: 0.5
-          max: 24
-          step: 0.5
-          unit_of_measurement: h
-
-log_sick_day:
-  name: Log sick day
-  description: Mark a day as sick leave. Sent to Sheets with Type = Sick.
-  fields:
-    date:
-      name: Date
-      description: The date to mark as sick. Leave empty for today.
-      required: false
-      selector:
-        date:
-    hours:
-      name: Hours
-      description: How many hours to count. Leave empty for a full workday.
+      description: How many hours to count for a sick day. Leave empty for net workday hours.
       required: false
       selector:
         number:

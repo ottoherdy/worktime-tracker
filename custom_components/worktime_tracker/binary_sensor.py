@@ -18,7 +18,7 @@ from .coordinator import WorktimeCoordinator
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
-    coordinator: WorktimeCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator: WorktimeCoordinator = entry.runtime_data
     async_add_entities(
         [
             AtWorkBinarySensor(coordinator, entry),
