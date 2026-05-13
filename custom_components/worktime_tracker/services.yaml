@@ -61,7 +61,7 @@ edit_day:
 
 log_sick_day:
   name: Log sick day
-  description: Mark a day as sick leave. Counts as a full workday and is sent to Sheets with Type = Sick.
+  description: Mark a day as sick leave. Sent to Sheets with Type = Sick.
   fields:
     date:
       name: Date
@@ -69,3 +69,13 @@ log_sick_day:
       required: false
       selector:
         date:
+    hours:
+      name: Hours
+      description: How many hours to count. Leave empty for a full workday.
+      required: false
+      selector:
+        number:
+          min: 0.5
+          max: 24
+          step: 0.5
+          unit_of_measurement: h
