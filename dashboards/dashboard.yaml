@@ -533,7 +533,7 @@ sections:
       - type: custom:bubble-card
         card_type: button
         button_type: button
-        entity: sensor.today_status
+        entity: script.log_sick_day
         icon: mdi:medical-bag
         name: Sick day
         card_layout: small
@@ -544,7 +544,6 @@ sections:
           columns: 4
           rows: 1
         tap_action:
-          action: call-service
-          service: worktime_tracker.log_sick_day
+          action: more-info
         hold_action:
           action: more-info

@@ -145,14 +145,15 @@ async def _async_register_services(hass: HomeAssistant) -> None:
 
     async def handle_log_sick_day(call: ServiceCall) -> None:
         from datetime import date as date_type
-        raw_date = call.data.get("date")
+        raw_date = call.data.get("date") or None  # treat empty string as None
         target = date_type.fromisoformat(raw_date) if raw_date else dt_util.now().date()
-        hours = call.data.get("hours")
+        raw_hours = call.data.get("hours")
+        hours = float(raw_hours) if raw_hours not in (None, "") else None
         for coord in _get_coordinators(hass):
-            await coord.async_log_sick_day(target_date=target, hours=float(hours) if hours is not None else None)
+            await coord.async_log_sick_day(target_date=target, hours=hours)
 
     sick_day_schema = vol.Schema({
-        vol.Optional("date"): cv.string,
-        vol.Optional("hours"): vol.Coerce(float),
+        vol.Optional("date"): vol.Any(None, cv.string),
+        vol.Optional("hours"): vol.Any(None, vol.Coerce(float)),
     })
     hass.services.async_register(DOMAIN, SERVICE_LOG_SICK_DAY, handle_log_sick_day, schema=sick_day_schema)
