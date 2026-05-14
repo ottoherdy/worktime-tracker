@@ -36,9 +36,10 @@ DEFAULT_AUTO_EXPORT_DELAY_HOURS = 3.0
 DAY_TYPE_NORMAL = "normal"
 DAY_TYPE_SICK = "sick"
 
-# Storage — v2 uses a new key so old data is migrated cleanly
-STORAGE_KEY = f"{DOMAIN}_data"
-STORAGE_VERSION = 2
+# Storage — keep original key and HA version so existing data is preserved.
+# Internal schema migrations use "schema_version" inside the data dict.
+STORAGE_KEY = f"{DOMAIN}.history"
+STORAGE_VERSION = 1
 
 # Notification action ids (kept in const for use in coordinator)
 EVENT_NOTIFICATION_ACTION = "mobile_app_notification_action"
