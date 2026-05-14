@@ -31,12 +31,13 @@ def _hours_to_human(hours: float) -> str:
     return f"{h}h {m:02d}m"
 
 
-def _device(entry: ConfigEntry, suffix: str, name: str, model: str) -> DeviceInfo:
+def _device(entry: ConfigEntry) -> DeviceInfo:
+    """Single device for all Worktime Tracker entities."""
     return DeviceInfo(
-        identifiers={(DOMAIN, f"{entry.entry_id}_{suffix}")},
-        name=name,
+        identifiers={(DOMAIN, entry.entry_id)},
+        name="Worktime Tracker",
         manufacturer="Worktime Tracker",
-        model=model,
+        model="Work Time Tracking",
     )
 
 
@@ -76,7 +77,7 @@ class TodaySensor(_Base):
 
     def __init__(self, coordinator: WorktimeCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry)
-        self._attr_device_info = _device(entry, "today", "Today", "Daily tracking")
+        self._attr_device_info = _device(entry)
         self._unsub_tick = None
 
     async def async_added_to_hass(self) -> None:
@@ -143,7 +144,7 @@ class StatusSensor(_Base):
 
     def __init__(self, coordinator: WorktimeCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry)
-        self._attr_device_info = _device(entry, "today", "Today", "Daily tracking")
+        self._attr_device_info = _device(entry)
 
     @property
     def native_value(self) -> str:
@@ -160,7 +161,7 @@ class ThisWeekSensor(_Base):
 
     def __init__(self, coordinator: WorktimeCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry)
-        self._attr_device_info = _device(entry, "this_week", "This Week", "Weekly tracking")
+        self._attr_device_info = _device(entry)
 
     @property
     def native_value(self) -> float:
@@ -186,7 +187,7 @@ class LastWeekSensor(_Base):
 
     def __init__(self, coordinator: WorktimeCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry)
-        self._attr_device_info = _device(entry, "last_week", "Last Week", "Weekly tracking")
+        self._attr_device_info = _device(entry)
 
     @property
     def native_value(self) -> float:
@@ -211,7 +212,7 @@ class ThisMonthSensor(_Base):
 
     def __init__(self, coordinator: WorktimeCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry)
-        self._attr_device_info = _device(entry, "this_month", "This Month", "Monthly tracking")
+        self._attr_device_info = _device(entry)
 
     @property
     def native_value(self) -> float:
@@ -240,7 +241,7 @@ class LastMonthSensor(_Base):
 
     def __init__(self, coordinator: WorktimeCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator, entry)
-        self._attr_device_info = _device(entry, "last_month", "Last Month", "Monthly tracking")
+        self._attr_device_info = _device(entry)
 
     @property
     def native_value(self) -> float:
