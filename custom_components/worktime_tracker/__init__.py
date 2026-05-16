@@ -139,9 +139,12 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         from datetime import date as date_type
         raw_date = call.data.get("date") or None
         target = date_type.fromisoformat(raw_date) if raw_date else dt_util.now().date()
-        day_type = call.data.get("type")
+        day_type = call.data.get("type") or None
         raw_hours = call.data.get("hours")
         hours = float(raw_hours) if raw_hours not in (None, "") else None
+        arrival = call.data.get("arrival") or None
+        departure = call.data.get("departure") or None
+        lunch = call.data.get("lunch") or None
 
         for coord in _get_coordinators(hass):
             if day_type == "sick":
@@ -153,9 +156,9 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             else:
                 await coord.async_edit_day(
                     target_date=target,
-                    arrival=call.data.get("arrival"),
-                    departure=call.data.get("departure"),
-                    lunch=call.data.get("lunch"),
+                    arrival=arrival,
+                    departure=departure,
+                    lunch=lunch,
                     day_type=day_type,
                     hours=hours,
                 )
@@ -172,11 +175,11 @@ async def _async_register_services(hass: HomeAssistant) -> None:
 
     edit_day_schema = vol.Schema({
         vol.Optional("date"): vol.Any(None, cv.string),
-        vol.Optional("arrival"): cv.string,
-        vol.Optional("departure"): cv.string,
-        vol.Optional("lunch"): vol.In([LUNCH_YES, LUNCH_NO, LUNCH_UNKNOWN]),
-        vol.Optional("type"): vol.In(["normal", "sick"]),
-        vol.Optional("hours"): vol.Any(None, vol.Coerce(float)),
+        vol.Optional("arrival"): vol.Any(None, cv.string),
+        vol.Optional("departure"): vol.Any(None, cv.string),
+        vol.Optional("lunch"): vol.Any(None, "", vol.In([LUNCH_YES, LUNCH_NO, LUNCH_UNKNOWN])),
+        vol.Optional("type"): vol.Any(None, "", vol.In(["normal", "sick"])),
+        vol.Optional("hours"): vol.Any(None, "", vol.Coerce(float)),
     })
     hass.services.async_register(
         DOMAIN, SERVICE_EDIT_DAY, handle_edit_day, schema=edit_day_schema

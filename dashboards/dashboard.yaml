@@ -483,7 +483,7 @@ sections:
           rows: 1
         tap_action:
           action: call-service
-          service: worktime_tracker.export_history
+          service: worktime_tracker.export_today
         icon_action:
           action: more-info
         hold_action:
@@ -530,3 +530,43 @@ sections:
           action: toggle
         hold_action:
           action: more-info
+
+  # --- History ---
+  - type: grid
+    cards:
+      - type: heading
+        heading: History
+        heading_style: subtitle
+        icon: mdi:history
+        badges: []
+      - type: custom:flex-table-card
+        entities:
+          include: sensor.today_hours_today
+        columns:
+          - name: Date
+            attr_as_list: recent_days
+            modify: x.date
+          - name: Day
+            attr_as_list: recent_days
+            modify: x.weekday
+          - name: In–Out
+            attr_as_list: recent_days
+            modify: 'x.arrival !== "—" ? x.arrival + "–" + x.departure : (x.type === "sick" ? "Sick" : "—")'
+          - name: Time
+            attr_as_list: recent_days
+            modify: x.human_readable
+          - name: ""
+            attr_as_list: recent_days
+            modify: 'x.punch_out_missing ? "⚠" : (x.type === "sick" ? "🤒" : "")'
+        css:
+          thead+: "font-size: 0.75em; opacity: 0.6;"
+          td+: "padding: 2px 4px; font-size: 0.82em;"
+          table+: "width: 100%; table-layout: fixed;"
+          td:nth-child(1)+: "width: 22%; text-align: left;"
+          td:nth-child(2)+: "width: 10%; text-align: left;"
+          td:nth-child(3)+: "width: 35%; text-align: left;"
+          td:nth-child(4)+: "width: 25%; text-align: left;"
+          td:nth-child(5)+: "width: 8%; text-align: center;"
+        grid_options:
+          columns: 6
+          rows: auto
