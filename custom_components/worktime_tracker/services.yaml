@@ -31,7 +31,8 @@ edit_day:
   name: Edit day
   description: >
     Edit arrival, departure or lunch for any date.
-    Set type to "sick" to log a sick day (handled via leave_records).
+    Set type to "sick" to log a sick day (counts net workday hours).
+    Set type to "off" to log a day off / vacation (counts 0 hours).
   fields:
     date:
       name: Date
@@ -41,28 +42,29 @@ edit_day:
         date:
     type:
       name: Type
-      description: Normal workday or sick day. Leave empty to keep existing type.
+      description: Normal workday, sick day, or day off. Leave empty to keep existing type.
       required: false
       selector:
         select:
           options:
             - "normal"
             - "sick"
+            - "off"
     arrival:
       name: Arrival
-      description: Arrival time HH:MM (ignored for sick days).
+      description: Arrival time HH:MM (only for normal days).
       required: false
       selector:
         time:
     departure:
       name: Departure
-      description: Departure time HH:MM (ignored for sick days).
+      description: Departure time HH:MM (only for normal days).
       required: false
       selector:
         time:
     lunch:
       name: Lunch
-      description: Did you have lunch? (ignored for sick days).
+      description: Did you have lunch? (only for normal days).
       required: false
       selector:
         select:
@@ -70,12 +72,14 @@ edit_day:
             - "yes"
             - "no"
     hours:
-      name: Hours (sick day)
-      description: How many hours to count for a sick day. Leave empty for net workday hours.
+      name: Hours
+      description: >
+        Override hours counted. For sick days defaults to net workday hours,
+        for off days defaults to 0. Leave empty to use the default.
       required: false
       selector:
         number:
-          min: 0.5
+          min: 0
           max: 24
           step: 0.5
           unit_of_measurement: h

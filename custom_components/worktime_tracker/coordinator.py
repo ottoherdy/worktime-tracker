@@ -64,6 +64,7 @@ from .const import (
     CONF_WORK_ZONE,
     CONF_WORKDAY_HOURS,
     DAY_TYPE_NORMAL,
+    DAY_TYPE_OFF,
     DAY_TYPE_SICK,
     DEFAULT_AUTO_DEPARTURE_ENABLED,
     DEFAULT_AUTO_DEPARTURE_TIME,
@@ -480,14 +481,19 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             local = datetime(ref_date.year, ref_date.month, ref_date.day, h, m)
             return dt_util.as_utc(dt_util.as_local(local))
 
-        if day_type == DAY_TYPE_SICK:
-            sick_hours = hours if hours is not None else float(
-                self.options.get(CONF_WORKDAY_HOURS, DEFAULT_WORKDAY_HOURS)
-            ) - self.lunch_deduction
+        if day_type in (DAY_TYPE_SICK, DAY_TYPE_OFF):
+            if day_type == DAY_TYPE_SICK:
+                default_hours = float(
+                    self.options.get(CONF_WORKDAY_HOURS, DEFAULT_WORKDAY_HOURS)
+                ) - self.lunch_deduction
+                leave_hours = hours if hours is not None else default_hours
+            else:
+                # Off day — counts 0 hours (vacation, day off)
+                leave_hours = hours if hours is not None else 0.0
             leave_entry: dict[str, Any] = {
                 "date": target_iso,
-                "type": DAY_TYPE_SICK,
-                "hours": round(sick_hours, 2),
+                "type": day_type,
+                "hours": round(leave_hours, 2),
                 "edited": True,
             }
             replaced = False
@@ -502,7 +508,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             self.history = [e for e in self.history if e.get("date") != target_iso]
             await self._async_save()
             self.async_set_updated_data(self.snapshot())
-            _LOGGER.info("Worktime: sick day set for %s (%.2fh)", target_iso, sick_hours)
+            _LOGGER.info("Worktime: %s day set for %s (%.2fh)", day_type, target_iso, leave_hours)
             await self._async_append_to_sheet(entry=leave_entry)
             return
 
@@ -1132,7 +1138,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         row = {
             "Date": target_date.isoformat(),
             "Weekday": _WEEKDAYS[target_date.weekday()],
-            "Type": "Sick" if day_type == DAY_TYPE_SICK else "Normal",
+            "Type": "Sick" if day_type == DAY_TYPE_SICK else ("Off" if day_type == DAY_TYPE_OFF else "Normal"),
             "Arrival": self._format_time(arrival),
             "Planned end": self._format_time(planned),
             "Departure": self._format_time(departure),

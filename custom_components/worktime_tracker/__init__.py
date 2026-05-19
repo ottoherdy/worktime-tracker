@@ -147,10 +147,10 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         lunch = call.data.get("lunch") or None
 
         for coord in _get_coordinators(hass):
-            if day_type == "sick":
+            if day_type in ("sick", "off"):
                 await coord.async_edit_day(
                     target_date=target,
-                    day_type="sick",
+                    day_type=day_type,
                     hours=hours,
                 )
             else:
@@ -178,7 +178,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         vol.Optional("arrival"): vol.Any(None, cv.string),
         vol.Optional("departure"): vol.Any(None, cv.string),
         vol.Optional("lunch"): vol.Any(None, "", vol.In([LUNCH_YES, LUNCH_NO, LUNCH_UNKNOWN])),
-        vol.Optional("type"): vol.Any(None, "", vol.In(["normal", "sick"])),
+        vol.Optional("type"): vol.Any(None, "", vol.In(["normal", "sick", "off"])),
         vol.Optional("hours"): vol.Any(None, "", vol.Coerce(float)),
     })
     hass.services.async_register(

@@ -551,13 +551,13 @@ sections:
             modify: x.weekday
           - name: In–Out
             attr_as_list: recent_days
-            modify: 'x.arrival !== "—" ? x.arrival + "–" + x.departure : (x.type === "sick" ? "Sick" : "—")'
+            modify: 'x.arrival !== "—" ? x.arrival + "–" + x.departure : (x.type === "sick" ? "Sick" : (x.type === "off" ? "Day off" : "—"))'
           - name: Time
             attr_as_list: recent_days
             modify: x.human_readable
           - name: ""
             attr_as_list: recent_days
-            modify: 'x.punch_out_missing ? "⚠" : (x.type === "sick" ? "🤒" : "")'
+            modify: 'x.punch_out_missing ? "⚠" : (x.type === "sick" ? "🤒" : (x.type === "off" ? "🏖" : ""))'
         css:
           thead+: "font-size: 0.75em; opacity: 0.6;"
           td+: "padding: 2px 4px; font-size: 0.82em;"

@@ -35,6 +35,7 @@ DEFAULT_AUTO_EXPORT_DELAY_HOURS = 3.0
 # Day types
 DAY_TYPE_NORMAL = "normal"
 DAY_TYPE_SICK = "sick"
+DAY_TYPE_OFF = "off"
 
 # Storage — keep original key and HA version so existing data is preserved.
 # Internal schema migrations use "schema_version" inside the data dict.
