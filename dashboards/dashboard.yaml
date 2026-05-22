@@ -393,21 +393,6 @@ sections:
       - type: custom:bubble-card
         card_type: button
         button_type: button
-        entity: script.edit_worktime_day
-        icon: mdi:calendar-edit
-        name: Edit day
-        card_layout: small
-        show_state: false
-        modules:
-          - "!default"
-        grid_options:
-          columns: 4
-          rows: 1
-        tap_action:
-          action: more-info
-      - type: custom:bubble-card
-        card_type: button
-        button_type: button
         entity: sensor.today_status
         icon: mdi:logout
         name: Log departure
