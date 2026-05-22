@@ -515,6 +515,70 @@ sections:
           action: toggle
         hold_action:
           action: more-info
+      - type: custom:bubble-card
+        card_type: button
+        button_type: button
+        entity: sensor.today_status
+        icon: mdi:emoticon-sick-outline
+        name: Sjukdag idag
+        card_layout: small
+        show_state: false
+        modules:
+          - "!default"
+        grid_options:
+          columns: 4
+          rows: 1
+        tap_action:
+          action: call-service
+          service: worktime_tracker.edit_day
+          service_data:
+            type: sick
+        icon_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: custom:bubble-card
+        card_type: button
+        button_type: button
+        entity: sensor.today_status
+        icon: mdi:beach
+        name: Ledig idag
+        card_layout: small
+        show_state: false
+        modules:
+          - "!default"
+        grid_options:
+          columns: 4
+          rows: 1
+        tap_action:
+          action: call-service
+          service: worktime_tracker.edit_day
+          service_data:
+            type: "off"
+        icon_action:
+          action: more-info
+        hold_action:
+          action: more-info
+      - type: custom:bubble-card
+        card_type: button
+        button_type: button
+        entity: sensor.today_status
+        icon: mdi:calendar-edit
+        name: Edit day
+        card_layout: small
+        show_state: false
+        modules:
+          - "!default"
+        grid_options:
+          columns: 4
+          rows: 1
+        tap_action:
+          action: navigate
+          navigation_path: /developer-tools/service
+        icon_action:
+          action: more-info
+        hold_action:
+          action: more-info
 
   # --- History ---
   - type: grid
