@@ -32,10 +32,11 @@ def _hours_to_human(hours: float) -> str:
 
 
 def _device(entry: ConfigEntry) -> DeviceInfo:
-    """Single device for all Worktime Tracker entities."""
+    """Single device for all Worktime Tracker entities (per config entry)."""
+    name = (entry.data.get("instance_name") or entry.title or "Worktime Tracker").strip()
     return DeviceInfo(
         identifiers={(DOMAIN, entry.entry_id)},
-        name="Worktime Tracker",
+        name=name,
         manufacturer="Worktime Tracker",
         model="Work Time Tracking",
     )

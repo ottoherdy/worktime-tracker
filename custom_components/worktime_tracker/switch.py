@@ -27,9 +27,10 @@ class AutoDepartureSwitch(CoordinatorEntity[WorktimeCoordinator], SwitchEntity):
     def __init__(self, coordinator: WorktimeCoordinator, entry: ConfigEntry) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"{entry.entry_id}_auto_departure"
+        name = (entry.data.get("instance_name") or entry.title or "Worktime Tracker").strip()
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
-            name="Worktime Tracker",
+            name=name,
             manufacturer="Worktime Tracker",
             model="Work Time Tracking",
         )

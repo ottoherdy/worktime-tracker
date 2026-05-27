@@ -67,14 +67,15 @@ type: custom:worktime-tracker-card
 
 The card is capped at 420px wide on purpose — it's designed for a phone screen first, but renders cleanly on desktop dashboards too. No HACS frontend dependencies, no resource registration. Hard-refresh the browser the first time after install if the card doesn't show up.
 
-The card has six sections, top to bottom:
+The card sections (top to bottom):
 
-1. **Topbar** — brand, today's date, a settings gear (opens today's edit modal)
-2. **Today** — big elapsed time (`9h 34m`), target sub-line, progress bar, In/Out/Lunch strip, action buttons (Log arrival / Log departure / Lunch toggle / Auto-out toggle), Reset in the header
-3. **This week** — Mon–Fri list with weekday + date + arrival → departure + hours, "today" row highlighted, plus a totals footer (`3 days · avg 9h 21m | vs 40h −11.97h`)
+1. **Topbar** — just today's date, centered
+2. **Today** — big elapsed time (`9h 34m`), target sub-line, progress bar, In/Out/Lunch strip, three white action buttons (Log arrival / Reset / Log departure) plus Lunch + Auto-out toggles; "On the clock" pulse pill in the header
+3. **This week** — Mon–Fri list with weekday + date + arrival → departure + hours, "today" row highlighted, totals footer (`3 days · avg 9h 21m`)
 4. **Last week** — same layout
-5. **History** — compact list with a mini-bar per day; bar fills warn-orange when over the daily target
-6. **Footer** — `Saved locally` left, `Export` / `Sheets` right (both call `worktime_tracker.export_today`)
+5. **This month** / **Last month** (default off) — compact summary cards with total hours + overtime
+6. **History** — compact list with a mini-bar per day; bar fills warn-orange when over the daily target
+7. **Footer** — `Saved locally` left, `Export` / `Sheets` right (both call `worktime_tracker.export_today`)
 
 Inline edit: tap any row (or the ✏️ pencil) in a day table to open the edit modal pre-filled with that day's arrival, departure, lunch and type (normal / sick / off). Save calls `worktime_tracker.edit_day`.
 
@@ -82,15 +83,30 @@ A built-in **visual editor** shows up when you click the card in dashboard edit 
 
 ```yaml
 type: custom:worktime-tracker-card
-show_topbar: true       # brand + date + settings gear
-show_today: true        # Today card with elapsed time and actions
-show_this_week: true    # This week list with totals
-show_last_week: true    # Last week list
-show_history: true      # History compact list
-show_footer: true       # "Saved locally" + Export/Sheets links
-show_edit: true         # edit pencil + row-tap → modal
-history_limit: 10       # rows in the history list
+show_topbar: true        # centered date
+show_today: true         # Today card with elapsed time and actions
+show_this_week: true     # This week list with totals
+show_last_week: true     # Last week list
+show_this_month: false   # This month hours + overtime summary
+show_last_month: false   # Last month summary
+show_history: true       # History compact list
+show_footer: true        # "Saved locally" + Export/Sheets links
+show_edit: true          # edit pencil + row-tap → modal
+history_limit: 10        # rows in the history list
+padding: 14              # outer padding in pixels
+entity_prefix: ""        # for multi-instance — see below
 ```
+
+#### Multiple instances
+
+The integration accepts more than one config entry. Each gets a name
+(default `Worktime Tracker`); set a distinct name like `home` or
+`Otto` on the second instance to avoid entity-ID collisions.
+
+The card defaults to reading `sensor.today_hours_today` etc. To bind
+a card to the second instance, set `entity_prefix: home` and it will
+read `sensor.home_today_hours_today` and call services with that
+prefix so only that coordinator responds.
 
 #### Theming
 
