@@ -59,55 +59,61 @@ Two more values are editable directly on the device page as `number` entities (n
 
 You have two options:
 
-**Option A — Bundled custom card (simplest).** The integration ships its own Lovelace card and auto-loads it. Just add a manual card to any dashboard:
+**Option A — Bundled custom card (recommended).** The integration ships a phone-first Lovelace card and auto-loads it. Just add a manual card to any dashboard:
 
 ```yaml
 type: custom:worktime-tracker-card
 ```
 
-No HACS frontend dependencies. No resource registration. Hard-refresh the browser the first time after install if the card doesn't show up.
+The card is capped at 420px wide on purpose — it's designed for a phone screen first, but renders cleanly on desktop dashboards too. No HACS frontend dependencies, no resource registration. Hard-refresh the browser the first time after install if the card doesn't show up.
 
-Inline edit: tap a row (or the ✏️ pencil) in any day table to open an edit modal pre-filled with that day's arrival, departure, lunch and type (normal / sick / off). Save calls `worktime_tracker.edit_day` — no script needed.
+The card has six sections, top to bottom:
 
-The card has a built-in **visual editor** — in dashboard edit mode, click the card → toggle sections with checkboxes, no YAML required. For YAML configuration, the keys are:
+1. **Topbar** — brand, today's date, a settings gear (opens today's edit modal)
+2. **Today** — big elapsed time (`9h 34m`), target sub-line, progress bar, In/Out/Lunch strip, action buttons (Log arrival / Log departure / Lunch toggle / Auto-out toggle), Reset in the header
+3. **This week** — Mon–Fri list with weekday + date + arrival → departure + hours, "today" row highlighted, plus a totals footer (`3 days · avg 9h 21m | vs 40h −11.97h`)
+4. **Last week** — same layout
+5. **History** — compact list with a mini-bar per day; bar fills warn-orange when over the daily target
+6. **Footer** — `Saved locally` left, `Export` / `Sheets` right (both call `worktime_tracker.export_today`)
+
+Inline edit: tap any row (or the ✏️ pencil) in a day table to open the edit modal pre-filled with that day's arrival, departure, lunch and type (normal / sick / off). Save calls `worktime_tracker.edit_day`.
+
+A built-in **visual editor** shows up when you click the card in dashboard edit mode — checkboxes for each section + a row count for History. For YAML the keys are:
 
 ```yaml
 type: custom:worktime-tracker-card
-show_header: true            # title + status badge
-show_times: true             # big arrival / planned end / hours row
-show_progress: true          # progress bar
-show_lunch_status: true      # lunch badge + remaining/overtime line
-show_actions: true           # Log arrival / Log departure / Lunch ✓ / No lunch
-show_auto_departure: true    # Auto-depart toggle + Reset
-show_week: false             # compact one-line week summary
-show_this_week: true         # this-week table (Mon–Fri) with totals/overtime
-show_last_week: true         # last-week table with totals/overtime
-show_recent: true            # rolling 7-day table
-show_edit: true              # tap a row or pencil to edit
-recent_days_limit: 7         # rows in the recent days table
+show_topbar: true       # brand + date + settings gear
+show_today: true        # Today card with elapsed time and actions
+show_this_week: true    # This week list with totals
+show_last_week: true    # Last week list
+show_history: true      # History compact list
+show_footer: true       # "Saved locally" + Export/Sheets links
+show_edit: true         # edit pencil + row-tap → modal
+history_limit: 10       # rows in the history list
 ```
 
-Each week table footer shows total hours, overtime versus the daily target, and difference versus the weekly target (e.g. 40h).
+#### Theming
 
-#### Styling
-
-Every visual property is exposed as a CSS variable — override in a theme or with `card-mod`:
+Every visual token is a CSS variable on `:host` — override in a theme or with `card_mod`:
 
 ```yaml
 type: custom:worktime-tracker-card
 card_mod:
   style: |
     :host {
-      --wt-card-padding: 20px;
-      --wt-radius: 18px;
-      --wt-status-color: #6750a4;
-      --wt-row-hover-bg: #6750a4;
-      --wt-button-bg: #6750a4;
-      --wt-divider-color: #ddd;
+      --wt-bg:     #1c1c1f;
+      --wt-card:   #25252a;
+      --wt-paper:  #2d2d33;
+      --wt-ink:    #f4f3ee;
+      --wt-ink-2:  #b6b6be;
+      --wt-muted:  #8a8a94;
+      --wt-line:   #3a3a44;
+      --wt-line-2: #2f2f36;
+      --wt-accent: #8a82e8;
     }
 ```
 
-Available variables: `--wt-card-padding`, `--wt-radius`, `--wt-status-color`, `--wt-row-hover-bg`, `--wt-row-hover-color`, `--wt-button-bg`, `--wt-button-color`, `--wt-table-header-color`, `--wt-divider-color`.
+Available variables: `--wt-bg`, `--wt-paper`, `--wt-card`, `--wt-ink`, `--wt-ink-2`, `--wt-muted`, `--wt-muted-2`, `--wt-line`, `--wt-line-2`, `--wt-accent`, `--wt-accent-soft`, `--wt-good`, `--wt-warn`, `--wt-danger`.
 
 **Option B — Full dashboard YAML.** Open `dashboards/dashboard.yaml`, replace `person.your_person` with your own person entity, and paste the content into a new Lovelace view.
 

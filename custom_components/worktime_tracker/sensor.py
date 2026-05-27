@@ -132,6 +132,9 @@ class TodaySensor(_Base):
             "status": c.status(),
             "recent_days": c.recent_days(60),
             "daily_net_target": c.daily_net_target,
+            "lunch_deduction": c.lunch_deduction,
+            "auto_lunch_default": c.auto_lunch_default,
+            "auto_departure_time": c.options.get("auto_departure_time", "17:30"),
         }
 
 
