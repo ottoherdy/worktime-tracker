@@ -1,5 +1,5 @@
 /**
- * Worktime Tracker Lovelace Card — v2.4.1
+ * Worktime Tracker Lovelace Card — v2.4.2
  * Vanilla Web Component, no build step. Auto-loaded via add_extra_js_url.
  *
  * Config (all optional, defaults shown):
@@ -217,6 +217,11 @@ class WorktimeTrackerCard extends HTMLElement {
   _render() {
     const hass = this._hass;
     if (!hass) return;
+    // While the edit modal is open, skip re-renders so the open time
+    // picker, focused input, and partially-typed values survive the
+    // 1s tick and incoming hass state updates. _closeEdit/_saveEdit
+    // clear this._editing and call _render() to resume normal updates.
+    if (this._editing && this.shadowRoot.getElementById("modal-backdrop")) return;
 
     const ids = this._entityIds();
     const todayState = hass.states[ids.today];
