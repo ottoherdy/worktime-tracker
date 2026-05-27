@@ -67,23 +67,47 @@ type: custom:worktime-tracker-card
 
 No HACS frontend dependencies. No resource registration. Hard-refresh the browser the first time after install if the card doesn't show up.
 
-Inline edit: tap any row in "Recent days" to open an edit modal pre-filled with that day's arrival, departure, lunch and type (normal / sick / off). Save calls `worktime_tracker.edit_day` — no script needed.
+Inline edit: tap a row (or the ✏️ pencil) in any day table to open an edit modal pre-filled with that day's arrival, departure, lunch and type (normal / sick / off). Save calls `worktime_tracker.edit_day` — no script needed.
 
-The card has these optional config keys (all default to `true`, so the bare `type:` line above gives you the full card):
+The card has a built-in **visual editor** — in dashboard edit mode, click the card → toggle sections with checkboxes, no YAML required. For YAML configuration, the keys are:
 
 ```yaml
 type: custom:worktime-tracker-card
-show_header: true           # title + status badge
-show_times: true            # big arrival / planned end / hours row
-show_progress: true         # progress bar
-show_lunch_status: true     # lunch badge + remaining/overtime line
-show_actions: true          # Log arrival / Log departure / Lunch ✓ / No lunch
-show_auto_departure: true   # Auto-depart toggle + Reset
-show_week: true             # week summary
-show_recent: true           # recent days table
-show_edit: true             # tap a row in recent days to edit
-recent_days_limit: 7        # how many days in the table
+show_header: true            # title + status badge
+show_times: true             # big arrival / planned end / hours row
+show_progress: true          # progress bar
+show_lunch_status: true      # lunch badge + remaining/overtime line
+show_actions: true           # Log arrival / Log departure / Lunch ✓ / No lunch
+show_auto_departure: true    # Auto-depart toggle + Reset
+show_week: false             # compact one-line week summary
+show_this_week: true         # this-week table (Mon–Fri) with totals/overtime
+show_last_week: true         # last-week table with totals/overtime
+show_recent: true            # rolling 7-day table
+show_edit: true              # tap a row or pencil to edit
+recent_days_limit: 7         # rows in the recent days table
 ```
+
+Each week table footer shows total hours, overtime versus the daily target, and difference versus the weekly target (e.g. 40h).
+
+#### Styling
+
+Every visual property is exposed as a CSS variable — override in a theme or with `card-mod`:
+
+```yaml
+type: custom:worktime-tracker-card
+card_mod:
+  style: |
+    :host {
+      --wt-card-padding: 20px;
+      --wt-radius: 18px;
+      --wt-status-color: #6750a4;
+      --wt-row-hover-bg: #6750a4;
+      --wt-button-bg: #6750a4;
+      --wt-divider-color: #ddd;
+    }
+```
+
+Available variables: `--wt-card-padding`, `--wt-radius`, `--wt-status-color`, `--wt-row-hover-bg`, `--wt-row-hover-color`, `--wt-button-bg`, `--wt-button-color`, `--wt-table-header-color`, `--wt-divider-color`.
 
 **Option B — Full dashboard YAML.** Open `dashboards/dashboard.yaml`, replace `person.your_person` with your own person entity, and paste the content into a new Lovelace view.
 

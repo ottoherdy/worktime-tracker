@@ -3,21 +3,33 @@
  * Vanilla Web Component — no build step, no external dependencies.
  * Auto-loaded via frontend.add_extra_js_url in __init__.py
  *
- * Config options (all optional, all default to true unless noted):
- *   show_header: bool          - card title + status badge
- *   show_times: bool           - arrival / planned / hours big row
- *   show_progress: bool        - progress bar
- *   show_lunch_status: bool    - lunch badge + remaining/overtime line
- *   show_actions: bool         - log arrival/departure/lunch buttons
- *   show_auto_departure: bool  - auto-departure toggle + reset
- *   show_week: bool            - week summary line
- *   show_recent: bool          - recent days table
- *   show_edit: bool            - tap a row in recent days to edit
- *   recent_days_limit: number  - rows in recent days table (default 7)
+ * Config (all optional, defaults shown):
+ *   show_header: true            // card title + status badge
+ *   show_times: true             // arrival / planned / hours big row
+ *   show_progress: true          // progress bar
+ *   show_lunch_status: true      // lunch badge + remaining/overtime line
+ *   show_actions: true           // log arrival/departure/lunch buttons
+ *   show_auto_departure: true    // auto-departure toggle + reset
+ *   show_week: false             // one-line week summary (compact)
+ *   show_this_week: true         // this-week breakdown table
+ *   show_last_week: true         // last-week breakdown table
+ *   show_recent: true            // rolling 7-day table
+ *   show_edit: true              // edit pencil + row-tap → modal
+ *   recent_days_limit: 7         // rows in recent days table
+ *
+ * Styling: override the CSS variables under :host in your theme or via card_mod.
+ *   --wt-card-padding (16px)
+ *   --wt-radius (12px)
+ *   --wt-status-color (auto from state)
+ *   --wt-row-hover-bg, --wt-row-hover-color
+ *   --wt-button-bg, --wt-button-color
+ *   --wt-table-header-color
+ *   --wt-divider-color
  */
 
 const ENTITY_TODAY = "sensor.today_hours_today";
 const ENTITY_WEEK = "sensor.this_week_hours_this_week";
+const ENTITY_LAST_WEEK = "sensor.last_week_hours_last_week";
 const ENTITY_SWITCH = "switch.today_auto_departure";
 const DOMAIN = "worktime_tracker";
 
@@ -33,6 +45,35 @@ const STATUS_LABEL = {
   overtime: "Overtime",
   done: "Done",
   off_duty: "Off duty",
+};
+
+const SECTIONS = [
+  ["show_header", "Header (title + status)"],
+  ["show_times", "Time row (arrival/planned/hours)"],
+  ["show_progress", "Progress bar"],
+  ["show_lunch_status", "Lunch + remaining line"],
+  ["show_actions", "Action buttons"],
+  ["show_auto_departure", "Auto-depart toggle + reset"],
+  ["show_week", "Week summary (one-line)"],
+  ["show_this_week", "This-week table"],
+  ["show_last_week", "Last-week table"],
+  ["show_recent", "Recent days table"],
+  ["show_edit", "Inline edit (pencil + row-tap)"],
+];
+
+const DEFAULTS = {
+  show_header: true,
+  show_times: true,
+  show_progress: true,
+  show_lunch_status: true,
+  show_actions: true,
+  show_auto_departure: true,
+  show_week: false,
+  show_this_week: true,
+  show_last_week: true,
+  show_recent: true,
+  show_edit: true,
+  recent_days_limit: 7,
 };
 
 function _fmt(val) {
@@ -62,9 +103,21 @@ function _progressPct(hours, target) {
 }
 
 function _timeForInput(val) {
-  // Recent_days arrival/departure are "HH:MM" or "—" — return "" for blank.
   if (!val || val === "—") return "";
   return val;
+}
+
+function _typeIcon(d) {
+  if (d.type === "sick") return " 🤒";
+  if (d.type === "off") return " 🌴";
+  if (d.punch_out_missing) return " ⚠";
+  return "";
+}
+
+function _hoursCell(d) {
+  if (d.type === "sick") return "sick";
+  if (d.type === "off") return "off";
+  return d.human_readable || "—";
 }
 
 class WorktimeTrackerCard extends HTMLElement {
@@ -73,7 +126,7 @@ class WorktimeTrackerCard extends HTMLElement {
     this.attachShadow({ mode: "open" });
     this._hass = null;
     this._intervalId = null;
-    this._editing = null; // {date, arrival, departure, lunch, type, hours} or null
+    this._editing = null;
   }
 
   set hass(hass) {
@@ -97,12 +150,12 @@ class WorktimeTrackerCard extends HTMLElement {
   }
 
   getCardSize() {
-    return 5;
+    return 6;
   }
 
-  _cfg(key, fallback = true) {
-    if (!this._config || !(key in this._config)) return fallback;
-    return this._config[key];
+  _cfg(key) {
+    if (this._config && key in this._config) return this._config[key];
+    return DEFAULTS[key];
   }
 
   _callService(service, data = {}) {
@@ -119,6 +172,7 @@ class WorktimeTrackerCard extends HTMLElement {
   }
 
   _openEdit(day) {
+    if (!day) return;
     this._editing = {
       date: day.date,
       arrival: _timeForInput(day.arrival),
@@ -150,12 +204,71 @@ class WorktimeTrackerCard extends HTMLElement {
     this._closeEdit();
   }
 
+  _renderDayTable(opts) {
+    // opts: {id, title, days, totals, columns:['date'|'weekday','arrival','departure','hours'], editable}
+    const { id, title, days, totals, columns, editable } = opts;
+    if (!days || days.length === 0) {
+      return `
+        <div class="block">
+          ${title ? `<div class="block-title">${title}</div>` : ""}
+          <div class="empty">No data</div>
+        </div>`;
+    }
+    const head = columns.map((c) => {
+      if (c === "date") return `<th>Date</th>`;
+      if (c === "weekday") return `<th>Day</th>`;
+      if (c === "arrival") return `<th>In</th>`;
+      if (c === "departure") return `<th>Out</th>`;
+      if (c === "hours") return `<th style="text-align:right">Hours</th>`;
+      return "<th></th>";
+    }).join("");
+
+    const rowsHtml = days.map((d, i) => {
+      const cells = columns.map((c) => {
+        if (c === "date") return `<td>${d.date || "—"}</td>`;
+        if (c === "weekday") return `<td>${d.weekday || "—"}</td>`;
+        if (c === "arrival") return `<td>${d.arrival || "—"}</td>`;
+        if (c === "departure") return `<td>${d.departure || "—"}</td>`;
+        if (c === "hours") return `<td style="text-align:right">${_hoursCell(d)}${_typeIcon(d)}</td>`;
+        return "<td></td>";
+      }).join("");
+      const editCell = editable
+        ? `<td class="edit-cell" data-table="${id}" data-row="${i}" title="Edit">✏️</td>`
+        : "";
+      const rowClass = editable ? "clickable" : "";
+      return `<tr class="${rowClass}" data-table="${id}" data-row="${i}">${cells}${editCell}</tr>`;
+    }).join("");
+
+    const colspan = columns.length + (editable ? 1 : 0);
+    const footHtml = totals ? `
+      <tfoot>
+        <tr>
+          <td colspan="${colspan}" class="foot">
+            <span>Total: <b>${totals.hours.toFixed(2)}h</b></span>
+            <span>Overtime: <b>${_sign(totals.overtime)}</b></span>
+            <span>vs ${totals.target}h: <b>${_sign(totals.hours - totals.target)}</b></span>
+          </td>
+        </tr>
+      </tfoot>` : "";
+
+    return `
+      <div class="block">
+        ${title ? `<div class="block-title">${title}</div>` : ""}
+        <table>
+          <thead><tr>${head}${editable ? "<th></th>" : ""}</tr></thead>
+          <tbody>${rowsHtml}</tbody>
+          ${footHtml}
+        </table>
+      </div>`;
+  }
+
   _render() {
     const hass = this._hass;
     if (!hass) return;
 
     const todayState = hass.states[ENTITY_TODAY];
     const weekState = hass.states[ENTITY_WEEK];
+    const lastWeekState = hass.states[ENTITY_LAST_WEEK];
     const switchState = hass.states[ENTITY_SWITCH];
 
     if (!todayState) {
@@ -170,6 +283,7 @@ class WorktimeTrackerCard extends HTMLElement {
 
     const attr = todayState.attributes || {};
     const weekAttr = weekState ? weekState.attributes || {} : {};
+    const lastWeekAttr = lastWeekState ? lastWeekState.attributes || {} : {};
     const swOn = switchState ? switchState.state === "on" : false;
 
     const status = attr.status || "off_duty";
@@ -189,6 +303,12 @@ class WorktimeTrackerCard extends HTMLElement {
     const weekHours = weekState ? parseFloat(weekState.state) || 0 : 0;
     const weekTarget = parseFloat(weekAttr.weekly_target) || 40;
     const weekOvertime = parseFloat(weekAttr.overtime) || 0;
+    const weekDays = weekAttr.days || [];
+
+    const lastWeekHours = lastWeekState ? parseFloat(lastWeekState.state) || 0 : 0;
+    const lastWeekOvertime = parseFloat(lastWeekAttr.overtime) || 0;
+    const lastWeekTarget = parseFloat(lastWeekAttr.weekly_target) || weekTarget;
+    const lastWeekDays = lastWeekAttr.days || [];
 
     const lunchBadge = lunch === "yes"
       ? `<span class="badge lunch-yes">🍽 Lunch: yes</span>`
@@ -196,48 +316,75 @@ class WorktimeTrackerCard extends HTMLElement {
       ? `<span class="badge lunch-no">🍽 Lunch: no</span>`
       : `<span class="badge lunch-unknown">🍽 Lunch: ?</span>`;
 
-    const limit = parseInt(this._cfg("recent_days_limit", 7), 10) || 7;
+    const limit = parseInt(this._cfg("recent_days_limit"), 10) || 7;
     const recent = (attr.recent_days || []).slice(0, limit);
-    const editable = this._cfg("show_edit", true);
-    const recentRows = recent.map((d, i) => {
-      const isSick = d.type === "sick";
-      const isOff = d.type === "off";
-      const missingPunch = d.punch_out_missing;
-      const typeIcon = isSick ? " 🤒" : isOff ? " 🌴" : missingPunch ? " ⚠" : "";
-      const hoursCell = isSick ? "sick" : isOff ? "off" : (d.human_readable || "—");
-      return `
-        <tr data-row="${i}" class="${editable ? "clickable" : ""}">
-          <td>${d.date || "—"}</td>
-          <td>${d.weekday || "—"}</td>
-          <td style="text-align:right">${hoursCell}${typeIcon}</td>
-        </tr>`;
-    }).join("");
+    const editable = !!this._cfg("show_edit");
 
-    // Departure display — show actual departure if done, else planned end
+    const showHeader = !!this._cfg("show_header");
+    const showTimes = !!this._cfg("show_times");
+    const showProgress = !!this._cfg("show_progress");
+    const showLunchLine = !!this._cfg("show_lunch_status");
+    const showActions = !!this._cfg("show_actions");
+    const showAutoDep = !!this._cfg("show_auto_departure");
+    const showWeek = !!this._cfg("show_week");
+    const showThisWeek = !!this._cfg("show_this_week");
+    const showLastWeek = !!this._cfg("show_last_week");
+    const showRecent = !!this._cfg("show_recent");
+
     const depDisplay = status === "done" ? departure : plannedEnd;
 
-    // Section visibility flags
-    const showHeader = this._cfg("show_header");
-    const showTimes = this._cfg("show_times");
-    const showProgress = this._cfg("show_progress");
-    const showLunchLine = this._cfg("show_lunch_status");
-    const showActions = this._cfg("show_actions");
-    const showAutoDep = this._cfg("show_auto_departure");
-    const showWeek = this._cfg("show_week");
-    const showRecent = this._cfg("show_recent");
-
-    // Modal (only rendered when editing)
     const editing = this._editing;
     const modalHtml = editing ? this._renderModal(editing) : "";
+
+    // Cache the day arrays so click handlers can look them up
+    this._dayTables = {
+      this_week: weekDays,
+      last_week: lastWeekDays,
+      recent: recent,
+    };
+
+    const thisWeekTable = showThisWeek ? this._renderDayTable({
+      id: "this_week",
+      title: "This week",
+      days: weekDays,
+      totals: { hours: weekHours, overtime: weekOvertime, target: weekTarget },
+      columns: ["weekday", "arrival", "departure", "hours"],
+      editable,
+    }) : "";
+
+    const lastWeekTable = showLastWeek ? this._renderDayTable({
+      id: "last_week",
+      title: "Last week",
+      days: lastWeekDays,
+      totals: { hours: lastWeekHours, overtime: lastWeekOvertime, target: lastWeekTarget },
+      columns: ["weekday", "arrival", "departure", "hours"],
+      editable,
+    }) : "";
+
+    const recentTable = showRecent ? this._renderDayTable({
+      id: "recent",
+      title: "Recent days",
+      days: recent,
+      totals: null,
+      columns: ["date", "weekday", "hours"],
+      editable,
+    }) : "";
 
     const html = `
       <style>
         :host {
           --wt-radius: 12px;
-          --wt-gap: 12px;
+          --wt-card-padding: 16px;
+          --wt-status-color: ${statusColor};
+          --wt-row-hover-bg: var(--primary-color, #03a9f4);
+          --wt-row-hover-color: #fff;
+          --wt-button-bg: var(--primary-color, #03a9f4);
+          --wt-button-color: #fff;
+          --wt-table-header-color: var(--secondary-text-color);
+          --wt-divider-color: var(--divider-color, #e0e0e0);
         }
         ha-card {
-          padding: 16px;
+          padding: var(--wt-card-padding);
           background: var(--card-background-color);
           color: var(--primary-text-color);
           font-family: var(--paper-font-body1_-_font-family, sans-serif);
@@ -251,7 +398,6 @@ class WorktimeTrackerCard extends HTMLElement {
         .title {
           font-size: 1.1em;
           font-weight: 600;
-          color: var(--primary-text-color);
         }
         .badge {
           display: inline-block;
@@ -261,7 +407,7 @@ class WorktimeTrackerCard extends HTMLElement {
           font-weight: 500;
         }
         .status-badge {
-          background: ${statusColor};
+          background: var(--wt-status-color);
           color: #fff;
         }
         .lunch-yes { background: var(--success-color, #4caf50); color: #fff; }
@@ -288,16 +434,15 @@ class WorktimeTrackerCard extends HTMLElement {
         .time-value {
           font-size: 1.3em;
           font-weight: 700;
-          color: var(--primary-text-color);
         }
         .hours-big {
           font-size: 2em;
           font-weight: 800;
-          color: ${statusColor};
+          color: var(--wt-status-color);
           margin: 4px 0;
         }
         .progress-wrap {
-          background: var(--divider-color, #e0e0e0);
+          background: var(--wt-divider-color);
           border-radius: 6px;
           height: 8px;
           overflow: hidden;
@@ -305,7 +450,7 @@ class WorktimeTrackerCard extends HTMLElement {
         }
         .progress-fill {
           height: 100%;
-          background: ${statusColor};
+          background: var(--wt-status-color);
           width: ${pct}%;
           transition: width 0.4s ease;
           border-radius: 6px;
@@ -321,8 +466,8 @@ class WorktimeTrackerCard extends HTMLElement {
           padding: 8px 4px;
           border: none;
           border-radius: var(--wt-radius);
-          background: var(--primary-color, #03a9f4);
-          color: #fff;
+          background: var(--wt-button-bg);
+          color: var(--wt-button-color);
           font-size: 0.85em;
           font-weight: 600;
           cursor: pointer;
@@ -332,17 +477,14 @@ class WorktimeTrackerCard extends HTMLElement {
         button.secondary {
           background: var(--secondary-background-color, #f5f5f5);
           color: var(--primary-text-color);
-          border: 1px solid var(--divider-color, #e0e0e0);
+          border: 1px solid var(--wt-divider-color);
         }
-        button.danger {
-          background: var(--error-color, #f44336);
-        }
-        button.on {
-          background: var(--success-color, #4caf50);
-        }
+        button.danger { background: var(--error-color, #f44336); }
+        button.on { background: var(--success-color, #4caf50); }
+
         .divider {
           height: 1px;
-          background: var(--divider-color, #e0e0e0);
+          background: var(--wt-divider-color);
           margin: 12px 0;
         }
         .week-row {
@@ -352,24 +494,34 @@ class WorktimeTrackerCard extends HTMLElement {
           color: var(--secondary-text-color);
           margin-bottom: 8px;
         }
-        .week-row span b {
+        .week-row span b { color: var(--primary-text-color); }
+
+        .block { margin-top: 14px; }
+        .block-title {
+          font-size: 0.9em;
+          font-weight: 600;
+          margin-bottom: 4px;
           color: var(--primary-text-color);
+        }
+        .empty {
+          font-size: 0.85em;
+          color: var(--secondary-text-color);
+          padding: 6px 0;
         }
         table {
           width: 100%;
           border-collapse: collapse;
           font-size: 0.82em;
-          margin-top: 6px;
         }
         thead th {
-          color: var(--secondary-text-color);
+          color: var(--wt-table-header-color);
           text-align: left;
           font-weight: 500;
-          padding: 2px 4px;
-          border-bottom: 1px solid var(--divider-color, #e0e0e0);
+          padding: 4px 4px;
+          border-bottom: 1px solid var(--wt-divider-color);
         }
         tbody td {
-          padding: 3px 4px;
+          padding: 4px 4px;
           color: var(--primary-text-color);
         }
         tbody tr:nth-child(even) td {
@@ -377,16 +529,32 @@ class WorktimeTrackerCard extends HTMLElement {
         }
         tbody tr.clickable { cursor: pointer; }
         tbody tr.clickable:hover td {
-          background: var(--primary-color, #03a9f4);
-          color: #fff;
+          background: var(--wt-row-hover-bg);
+          color: var(--wt-row-hover-color);
         }
+        td.edit-cell {
+          text-align: center;
+          cursor: pointer;
+          width: 1.6em;
+          user-select: none;
+        }
+        td.edit-cell:hover { opacity: 0.7; }
+        tfoot td.foot {
+          padding-top: 6px;
+          border-top: 1px solid var(--wt-divider-color);
+          display: flex;
+          justify-content: space-between;
+          gap: 8px;
+          font-size: 0.85em;
+          color: var(--secondary-text-color);
+        }
+        tfoot td.foot b { color: var(--primary-text-color); }
         .remaining-label {
           font-size: 0.8em;
           color: var(--secondary-text-color);
-          margin-top: 2px;
         }
 
-        /* Edit modal */
+        /* Modal */
         .modal-backdrop {
           position: fixed;
           inset: 0;
@@ -406,15 +574,9 @@ class WorktimeTrackerCard extends HTMLElement {
           overflow-y: auto;
           box-shadow: 0 8px 24px rgba(0,0,0,0.3);
         }
-        .modal h3 {
-          margin: 0 0 12px;
-          font-size: 1.1em;
-        }
+        .modal h3 { margin: 0 0 12px; font-size: 1.1em; }
         .modal .field {
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-          margin-bottom: 12px;
+          display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px;
         }
         .modal .field label {
           font-size: 0.78em;
@@ -425,21 +587,15 @@ class WorktimeTrackerCard extends HTMLElement {
         .modal input, .modal select {
           padding: 8px;
           font-size: 1em;
-          border: 1px solid var(--divider-color, #ccc);
+          border: 1px solid var(--wt-divider-color);
           border-radius: 6px;
           background: var(--card-background-color, #fff);
           color: var(--primary-text-color);
         }
         .modal .row-actions {
-          display: flex;
-          gap: 8px;
-          justify-content: flex-end;
-          margin-top: 8px;
+          display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px;
         }
-        .modal .row-actions button {
-          flex: 0 0 auto;
-          min-width: 90px;
-        }
+        .modal .row-actions button { flex: 0 0 auto; min-width: 90px; }
       </style>
 
       <ha-card>
@@ -466,9 +622,7 @@ class WorktimeTrackerCard extends HTMLElement {
           </div>` : ""}
 
         ${showProgress ? `
-          <div class="progress-wrap">
-            <div class="progress-fill"></div>
-          </div>` : ""}
+          <div class="progress-wrap"><div class="progress-fill"></div></div>` : ""}
 
         ${showLunchLine ? `
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
@@ -498,35 +652,22 @@ class WorktimeTrackerCard extends HTMLElement {
             <button id="btn-reset" class="danger" style="flex:0 0 auto;min-width:60px">Reset</button>
           </div>` : ""}
 
-        ${(showActions || showAutoDep) && (showWeek || showRecent) ? `<div class="divider"></div>` : ""}
-
         ${showWeek ? `
+          <div class="divider"></div>
           <div class="week-row">
             <span>This week: <b>${weekHours.toFixed(2)}h</b></span>
             <span>Overtime: <b>${_sign(weekOvertime)}</b></span>
             <span>Target: <b>${weekTarget}h</b></span>
           </div>` : ""}
 
-        ${showWeek && showRecent ? `<div class="divider"></div>` : ""}
-
-        ${showRecent ? `
-          <table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Day</th>
-                <th style="text-align:right">Hours</th>
-              </tr>
-            </thead>
-            <tbody id="recent-tbody">
-              ${recentRows || '<tr><td colspan="3" style="text-align:center;color:var(--secondary-text-color)">No history yet</td></tr>'}
-            </tbody>
-          </table>` : ""}
+        ${thisWeekTable}
+        ${lastWeekTable}
+        ${recentTable}
       </ha-card>
       ${modalHtml}`;
 
     this.shadowRoot.innerHTML = html;
-    this._wireEvents(recent, editable);
+    this._wireEvents();
   }
 
   _renderModal(e) {
@@ -577,7 +718,7 @@ class WorktimeTrackerCard extends HTMLElement {
       </div>`;
   }
 
-  _wireEvents(recent, editable) {
+  _wireEvents() {
     const $ = (id) => this.shadowRoot.getElementById(id);
 
     $("btn-arrival")?.addEventListener("click", () => this._callService("log_arrival"));
@@ -589,17 +730,26 @@ class WorktimeTrackerCard extends HTMLElement {
       if (confirm("Reset today's tracking?")) this._callService("reset_today");
     });
 
-    if (editable) {
-      this.shadowRoot.querySelectorAll("tr[data-row]").forEach((row) => {
-        row.addEventListener("click", () => {
-          const idx = parseInt(row.getAttribute("data-row"), 10);
-          const day = recent[idx];
-          if (day) this._openEdit(day);
-        });
+    // Row & edit-pencil clicks across all day tables
+    this.shadowRoot.querySelectorAll("tr.clickable").forEach((row) => {
+      row.addEventListener("click", (ev) => {
+        // Edit pencil cell handles its own click; row-level fires for blank area too
+        const tableId = row.getAttribute("data-table");
+        const idx = parseInt(row.getAttribute("data-row"), 10);
+        const day = (this._dayTables?.[tableId] || [])[idx];
+        this._openEdit(day);
       });
-    }
+    });
+    this.shadowRoot.querySelectorAll("td.edit-cell").forEach((cell) => {
+      cell.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const tableId = cell.getAttribute("data-table");
+        const idx = parseInt(cell.getAttribute("data-row"), 10);
+        const day = (this._dayTables?.[tableId] || [])[idx];
+        this._openEdit(day);
+      });
+    });
 
-    // Modal wiring
     if (this._editing) {
       $("ed-cancel")?.addEventListener("click", () => this._closeEdit());
       $("modal-backdrop")?.addEventListener("click", (ev) => {
@@ -624,15 +774,121 @@ class WorktimeTrackerCard extends HTMLElement {
     }
   }
 
-  static getStubConfig() {
-    return {};
-  }
-
+  static getStubConfig() { return {}; }
   static getConfigElement() {
-    return null;
+    return document.createElement("worktime-tracker-card-editor");
   }
 }
 
+/* -----------------------------------------------------------------
+   Visual editor — checkboxes for every show_* + recent_days_limit
+   ----------------------------------------------------------------- */
+class WorktimeTrackerCardEditor extends HTMLElement {
+  constructor() {
+    super();
+    this.attachShadow({ mode: "open" });
+    this._config = {};
+  }
+
+  setConfig(config) {
+    this._config = { ...config };
+    this._render();
+  }
+
+  set hass(hass) { this._hass = hass; }
+
+  _emit() {
+    this.dispatchEvent(new CustomEvent("config-changed", {
+      detail: { config: this._config },
+      bubbles: true,
+      composed: true,
+    }));
+  }
+
+  _get(key) {
+    if (key in this._config) return this._config[key];
+    return DEFAULTS[key];
+  }
+
+  _render() {
+    const sectionRows = SECTIONS.map(([key, label]) => `
+      <label class="row">
+        <input type="checkbox" data-key="${key}" ${this._get(key) ? "checked" : ""}>
+        <span>${label}</span>
+      </label>`).join("");
+
+    this.shadowRoot.innerHTML = `
+      <style>
+        :host { display: block; padding: 8px 0; color: var(--primary-text-color); }
+        .group { margin-bottom: 14px; }
+        .group-title {
+          font-size: 0.85em; font-weight: 600;
+          color: var(--secondary-text-color);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          margin-bottom: 6px;
+        }
+        .row {
+          display: flex; align-items: center; gap: 10px;
+          padding: 4px 0;
+          cursor: pointer;
+        }
+        .row input { transform: scale(1.1); }
+        .num-row {
+          display: flex; align-items: center; gap: 10px;
+          padding: 4px 0;
+        }
+        input[type="number"] {
+          padding: 6px 8px;
+          border: 1px solid var(--divider-color, #ccc);
+          border-radius: 6px;
+          background: var(--card-background-color, #fff);
+          color: var(--primary-text-color);
+          width: 80px;
+        }
+        .hint {
+          font-size: 0.8em;
+          color: var(--secondary-text-color);
+          margin-top: 8px;
+        }
+      </style>
+      <div class="group">
+        <div class="group-title">Sections</div>
+        ${sectionRows}
+      </div>
+      <div class="group">
+        <div class="group-title">Recent days table</div>
+        <div class="num-row">
+          <label for="ed-limit">Rows:</label>
+          <input id="ed-limit" type="number" min="1" max="60"
+                 value="${this._get("recent_days_limit")}">
+        </div>
+      </div>
+      <div class="hint">
+        Styling: override CSS variables under <code>:host</code> with
+        card_mod or your theme — <code>--wt-card-padding</code>,
+        <code>--wt-radius</code>, <code>--wt-status-color</code>,
+        <code>--wt-row-hover-bg</code>, etc.
+      </div>`;
+
+    this.shadowRoot.querySelectorAll("input[type=checkbox]").forEach((cb) => {
+      cb.addEventListener("change", () => {
+        const key = cb.getAttribute("data-key");
+        this._config = { ...this._config, [key]: cb.checked };
+        this._emit();
+      });
+    });
+    this.shadowRoot.getElementById("ed-limit")?.addEventListener("input", (ev) => {
+      const n = parseInt(ev.target.value, 10);
+      if (!isNaN(n) && n > 0) {
+        this._config = { ...this._config, recent_days_limit: n };
+        this._emit();
+      }
+    });
+  }
+}
+
+customElements.define("worktime-tracker-card-editor", WorktimeTrackerCardEditor);
 customElements.define("worktime-tracker-card", WorktimeTrackerCard);
 
 window.customCards = window.customCards || [];
