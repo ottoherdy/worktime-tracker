@@ -43,6 +43,11 @@ def _build_user_schema(defaults: dict[str, Any] | None = None) -> vol.Schema:
     defaults = defaults or {}
     return vol.Schema(
         {
+            vol.Optional(
+                "instance_name", default=defaults.get("instance_name", "Worktime Tracker")
+            ): selector.TextSelector(
+                selector.TextSelectorConfig(type=selector.TextSelectorType.TEXT)
+            ),
             vol.Required(
                 CONF_PERSON, default=defaults.get(CONF_PERSON)
             ): selector.EntitySelector(
@@ -134,13 +139,14 @@ class WorktimeConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        # Single-instance enforcement
-        await self.async_set_unique_id(DOMAIN)
-        self._abort_if_unique_id_configured()
-
         errors: dict[str, str] = {}
         if user_input is not None:
-            return self.async_create_entry(title="Worktime Tracker", data=user_input)
+            title = (user_input.get("instance_name") or "").strip() or "Worktime Tracker"
+            # Use a stable unique id per name so duplicates of the same name abort
+            slug = "".join(c if c.isalnum() else "_" for c in title.lower()) or DOMAIN
+            await self.async_set_unique_id(f"{DOMAIN}_{slug}")
+            self._abort_if_unique_id_configured()
+            return self.async_create_entry(title=title, data=user_input)
 
         return self.async_show_form(
             step_id="user", data_schema=_build_user_schema(), errors=errors

@@ -114,39 +114,52 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
     await hass.config_entries.async_reload(entry.entry_id)
 
 
-def _get_coordinators(hass: HomeAssistant) -> list[WorktimeCoordinator]:
-    """Return all active coordinators from runtime_data."""
+def _get_coordinators(
+    hass: HomeAssistant, entry_prefix: str | None = None
+) -> list[WorktimeCoordinator]:
+    """Return active coordinators. If entry_prefix is given, only the one
+    whose instance_name slug matches that prefix is returned."""
     coordinators = []
     for entry in hass.config_entries.async_entries(DOMAIN):
-        if hasattr(entry, "runtime_data") and isinstance(
+        if not (hasattr(entry, "runtime_data") and isinstance(
             entry.runtime_data, WorktimeCoordinator
-        ):
-            coordinators.append(entry.runtime_data)
+        )):
+            continue
+        if entry_prefix:
+            name = entry.data.get("instance_name") or entry.title or ""
+            slug = "".join(c if c.isalnum() else "_" for c in name.lower())
+            if slug != entry_prefix:
+                continue
+        coordinators.append(entry.runtime_data)
     return coordinators
 
 
 async def _async_register_services(hass: HomeAssistant) -> None:
     """Register integration services."""
 
+    def _prefix(call: ServiceCall) -> str | None:
+        v = call.data.get("entry_prefix")
+        return v.strip() if isinstance(v, str) and v.strip() else None
+
     async def handle_set_lunch(call: ServiceCall) -> None:
         had_lunch = call.data.get("had_lunch", True)
-        for coord in _get_coordinators(hass):
+        for coord in _get_coordinators(hass, _prefix(call)):
             await coord.async_set_lunch(LUNCH_YES if had_lunch else LUNCH_NO)
 
     async def handle_log_arrival(call: ServiceCall) -> None:
-        for coord in _get_coordinators(hass):
+        for coord in _get_coordinators(hass, _prefix(call)):
             await coord.async_register_arrival(manual=True)
 
     async def handle_log_departure(call: ServiceCall) -> None:
-        for coord in _get_coordinators(hass):
+        for coord in _get_coordinators(hass, _prefix(call)):
             await coord.async_register_departure(manual=True)
 
     async def handle_reset_today(call: ServiceCall) -> None:
-        for coord in _get_coordinators(hass):
+        for coord in _get_coordinators(hass, _prefix(call)):
             await coord.async_reset_today()
 
     async def handle_export_today(call: ServiceCall) -> None:
-        for coord in _get_coordinators(hass):
+        for coord in _get_coordinators(hass, _prefix(call)):
             await coord.async_export_today()
 
     async def handle_edit_day(call: ServiceCall) -> None:
@@ -160,7 +173,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         departure = call.data.get("departure") or None
         lunch = call.data.get("lunch") or None
 
-        for coord in _get_coordinators(hass):
+        for coord in _get_coordinators(hass, _prefix(call)):
             if day_type in ("sick", "off"):
                 await coord.async_edit_day(
                     target_date=target,
@@ -177,15 +190,19 @@ async def _async_register_services(hass: HomeAssistant) -> None:
                     hours=hours,
                 )
 
-    set_lunch_schema = vol.Schema({vol.Optional("had_lunch", default=True): cv.boolean})
+    set_lunch_schema = vol.Schema({
+        vol.Optional("had_lunch", default=True): cv.boolean,
+        vol.Optional("entry_prefix"): cv.string,
+    })
+    no_arg_schema = vol.Schema({vol.Optional("entry_prefix"): cv.string})
 
     hass.services.async_register(
         DOMAIN, SERVICE_SET_LUNCH, handle_set_lunch, schema=set_lunch_schema
     )
-    hass.services.async_register(DOMAIN, SERVICE_LOG_ARRIVAL, handle_log_arrival)
-    hass.services.async_register(DOMAIN, SERVICE_LOG_DEPARTURE, handle_log_departure)
-    hass.services.async_register(DOMAIN, SERVICE_RESET_TODAY, handle_reset_today)
-    hass.services.async_register(DOMAIN, SERVICE_EXPORT_TODAY, handle_export_today)
+    hass.services.async_register(DOMAIN, SERVICE_LOG_ARRIVAL, handle_log_arrival, schema=no_arg_schema)
+    hass.services.async_register(DOMAIN, SERVICE_LOG_DEPARTURE, handle_log_departure, schema=no_arg_schema)
+    hass.services.async_register(DOMAIN, SERVICE_RESET_TODAY, handle_reset_today, schema=no_arg_schema)
+    hass.services.async_register(DOMAIN, SERVICE_EXPORT_TODAY, handle_export_today, schema=no_arg_schema)
 
     edit_day_schema = vol.Schema({
         vol.Optional("date"): vol.Any(None, cv.string),
@@ -194,6 +211,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         vol.Optional("lunch"): vol.Any(None, "", vol.In([LUNCH_YES, LUNCH_NO, LUNCH_UNKNOWN])),
         vol.Optional("type"): vol.Any(None, "", vol.In(["normal", "sick", "off"])),
         vol.Optional("hours"): vol.Any(None, "", vol.Coerce(float)),
+        vol.Optional("entry_prefix"): cv.string,
     })
     hass.services.async_register(
         DOMAIN, SERVICE_EDIT_DAY, handle_edit_day, schema=edit_day_schema

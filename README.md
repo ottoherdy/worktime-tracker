@@ -82,15 +82,30 @@ A built-in **visual editor** shows up when you click the card in dashboard edit 
 
 ```yaml
 type: custom:worktime-tracker-card
-show_topbar: true       # brand + date + settings gear
-show_today: true        # Today card with elapsed time and actions
-show_this_week: true    # This week list with totals
-show_last_week: true    # Last week list
-show_history: true      # History compact list
-show_footer: true       # "Saved locally" + Export/Sheets links
-show_edit: true         # edit pencil + row-tap → modal
-history_limit: 10       # rows in the history list
+show_topbar: true        # centered date
+show_today: true         # Today card with elapsed time and actions
+show_this_week: true     # This week list with totals
+show_last_week: true     # Last week list
+show_this_month: false   # This month hours + overtime summary
+show_last_month: false   # Last month summary
+show_history: true       # History compact list
+show_footer: true        # "Saved locally" + Export/Sheets links
+show_edit: true          # edit pencil + row-tap → modal
+history_limit: 10        # rows in the history list
+padding: 14              # outer padding in pixels
+entity_prefix: ""        # for multi-instance — see below
 ```
+
+#### Multiple instances
+
+The integration accepts more than one config entry. Each gets a name
+(default `Worktime Tracker`); set a distinct name like `home` or
+`Otto` on the second instance to avoid entity-ID collisions.
+
+The card defaults to reading `sensor.today_hours_today` etc. To bind
+a card to the second instance, set `entity_prefix: home` and it will
+read `sensor.home_today_hours_today` and call services with that
+prefix so only that coordinator responds.
 
 #### Theming
 
