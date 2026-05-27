@@ -1,5 +1,5 @@
 /**
- * Worktime Tracker Lovelace Card — v2.4.2
+ * Worktime Tracker Lovelace Card — v2.4.3
  * Vanilla Web Component, no build step. Auto-loaded via add_extra_js_url.
  *
  * Config (all optional, defaults shown):
@@ -14,6 +14,7 @@
  *   show_edit: true          // edit pencil + row-tap → modal
  *   history_limit: 10        // rows in history
  *   padding: 14              // outer padding in px
+ *   max_width: 420           // max card width in px (0 = fluid / fill container)
  *   entity_prefix: ""        // for multi-instance, e.g. "home"; reads
  *                            // sensor.home_today_hours_today instead
  *                            // of sensor.today_hours_today
@@ -48,6 +49,7 @@ const DEFAULTS = {
   show_edit: true,
   history_limit: 10,
   padding: 14,
+  max_width: 420,
   entity_prefix: "",
 };
 
@@ -308,6 +310,8 @@ class WorktimeTrackerCard extends HTMLElement {
     const showFooter = !!this._cfg("show_footer");
 
     const padding = parseInt(this._cfg("padding"), 10) || 14;
+    const maxWidthRaw = parseInt(this._cfg("max_width"), 10);
+    const maxWidthCss = !isNaN(maxWidthRaw) && maxWidthRaw > 0 ? `${maxWidthRaw}px` : "none";
 
     this._dayTables = {
       this_week: weekDays,
@@ -340,7 +344,7 @@ class WorktimeTrackerCard extends HTMLElement {
     this.shadowRoot.innerHTML = `
       <style>${this._styles(padding)}</style>
       <ha-card>
-        <div class="app" style="--wt-pad:${padding}px">
+        <div class="app" style="--wt-pad:${padding}px;--wt-maxw:${maxWidthCss}">
           ${showTopbar ? `
             <header class="topbar">
               <span class="mono date">${_formatTopbarDate()}</span>
@@ -677,7 +681,7 @@ class WorktimeTrackerCard extends HTMLElement {
         -webkit-font-smoothing: antialiased;
       }
       .app {
-        max-width: 420px;
+        max-width: var(--wt-maxw, 420px);
         margin: 0 auto;
         padding: var(--wt-pad, 14px) var(--wt-pad, 14px) calc(var(--wt-pad, 14px) * 2);
       }
@@ -1064,6 +1068,16 @@ class WorktimeTrackerCardEditor extends HTMLElement {
         </div>
       </div>
       <div class="group">
+        <div class="group-title">Max width (px, 0 = fluid)</div>
+        <div class="num-row">
+          <input id="ed-maxw" type="number" min="0" max="1200" value="${this._get("max_width")}">
+        </div>
+        <div class="hint">
+          Default <code>420</code> (phone-sized). Increase to use more of
+          a wide column. Set <code>0</code> to fill the container.
+        </div>
+      </div>
+      <div class="group">
         <div class="group-title">Entity prefix (multi-instance)</div>
         <div class="num-row">
           <input id="ed-prefix" type="text" placeholder="e.g. home" value="${this._get("entity_prefix") || ""}">
@@ -1098,6 +1112,13 @@ class WorktimeTrackerCardEditor extends HTMLElement {
       const n = parseInt(ev.target.value, 10);
       if (!isNaN(n) && n >= 0) {
         this._config = { ...this._config, padding: n };
+        this._emit();
+      }
+    });
+    this.shadowRoot.getElementById("ed-maxw")?.addEventListener("input", (ev) => {
+      const n = parseInt(ev.target.value, 10);
+      if (!isNaN(n) && n >= 0) {
+        this._config = { ...this._config, max_width: n };
         this._emit();
       }
     });
