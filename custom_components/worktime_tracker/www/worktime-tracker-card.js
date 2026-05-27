@@ -1,23 +1,23 @@
 /**
- * Worktime Tracker Lovelace Card — v2.4.3
+ * Worktime Tracker Lovelace Card — v2.5.0
  * Vanilla Web Component, no build step. Auto-loaded via add_extra_js_url.
  *
  * Config (all optional, defaults shown):
- *   show_topbar: true        // centered date
+ *   show_topbar: false       // centered date
  *   show_today: true         // Today card with elapsed time and actions
  *   show_this_week: true     // This week list with totals
  *   show_last_week: true     // Last week list
  *   show_this_month: false   // This month summary
  *   show_last_month: false   // Last month summary
  *   show_history: true       // History compact list
+ *   show_lookup: true        // Date-picker box at the bottom
  *   show_footer: true        // "Saved locally" + Export/Sheets links
  *   show_edit: true          // edit pencil + row-tap → modal
  *   history_limit: 10        // rows in history
  *   padding: 14              // outer padding in px
- *   max_width: 420           // max card width in px (0 = fluid / fill container)
- *   entity_prefix: ""        // for multi-instance, e.g. "home"; reads
- *                            // sensor.home_today_hours_today instead
- *                            // of sensor.today_hours_today
+ *   max_width: 420           // max card width (0 = fluid / fill container)
+ *   theme: "auto"            // "auto" (follow sun.sun) | "light" | "dark"
+ *   entity_prefix: ""        // for multi-instance, e.g. "home"
  *
  * Styling: every visual token is a CSS variable on :host. Override via
  * card_mod or a theme. See README.md for the full list.
@@ -45,11 +45,13 @@ const DEFAULTS = {
   show_this_month: false,
   show_last_month: false,
   show_history: true,
+  show_lookup: true,
   show_footer: true,
   show_edit: true,
   history_limit: 10,
   padding: 14,
   max_width: 420,
+  theme: "auto",
   entity_prefix: "",
 };
 
@@ -61,6 +63,7 @@ const SECTIONS = [
   ["show_this_month", "This month summary"],
   ["show_last_month", "Last month summary"],
   ["show_history", "History list"],
+  ["show_lookup", "Look up day (date picker)"],
   ["show_footer", "Footer (Export / Sheets)"],
   ["show_edit", "Inline edit (pencil + row-tap)"],
 ];
@@ -72,6 +75,7 @@ const ICON = {
   arrowLeft: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H6M11 7l-5 5 5 5"/></svg>`,
   lunch: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M7 2v8a3 3 0 1 0 6 0V2"/><path d="M10 14v8"/><path d="M17 2c2 4 2 8 0 12v8"/></svg>`,
   clock: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`,
+  search: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>`,
   pencil: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M14.7 4.3l4.9 4.9L8.6 20.3 3.7 21l.7-4.9z"/></svg>`,
 };
 
@@ -129,6 +133,12 @@ function _lunchLabel(status) {
   return "—";
 }
 
+function _weekdayShort(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso + "T12:00:00");
+  return new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(d);
+}
+
 class WorktimeTrackerCard extends HTMLElement {
   constructor() {
     super();
@@ -136,15 +146,30 @@ class WorktimeTrackerCard extends HTMLElement {
     this._hass = null;
     this._tick = null;
     this._editing = null;
+    this._stateSig = "";
+    this._lookupDate = _todayIso();
   }
 
   set hass(hass) {
     this._hass = hass;
-    this._render();
+    // While the edit modal is open, leave the DOM alone so the open
+    // time picker, focused input, and partially-typed values survive
+    // both the tick and incoming hass updates.
+    if (this._editing && this.shadowRoot.getElementById("modal-backdrop")) return;
+    const sig = this._computeSig();
+    if (sig !== this._stateSig) {
+      this._stateSig = sig;
+      this._render();
+    } else {
+      this._renderLive();
+    }
   }
 
   connectedCallback() {
-    this._tick = setInterval(() => this._render(), 1000);
+    // Tick only nudges the elapsed-time / progress bar via targeted DOM
+    // mutations; the rest of the shadow DOM stays put so anything you
+    // interact with (buttons, scroll position, hovers) isn't wiped.
+    this._tick = setInterval(() => this._renderLive(), 1000);
   }
 
   disconnectedCallback() {
@@ -153,6 +178,7 @@ class WorktimeTrackerCard extends HTMLElement {
 
   setConfig(config) {
     this._config = config || {};
+    this._stateSig = "";
   }
 
   getCardSize() { return 8; }
@@ -209,20 +235,102 @@ class WorktimeTrackerCard extends HTMLElement {
       if (e.arrival) payload.arrival = e.arrival;
       if (e.departure) payload.departure = e.departure;
       if (e.lunch) payload.lunch = e.lunch;
-    } else if (e.hours !== "") {
-      payload.hours = parseFloat(e.hours);
     }
+    // hours override applies to any type (lets you do half-day sick etc.)
+    if (e.hours !== "") payload.hours = parseFloat(e.hours);
     this._callService("edit_day", payload);
     this._closeEdit();
+  }
+
+  _useDarkTheme() {
+    const t = this._cfg("theme");
+    if (t === "dark") return true;
+    if (t === "light") return false;
+    const sun = this._hass?.states?.["sun.sun"];
+    return sun?.state === "below_horizon";
+  }
+
+  _computeSig() {
+    const hass = this._hass;
+    if (!hass) return "";
+    const ids = this._entityIds();
+    const t = hass.states[ids.today]?.attributes || {};
+    const w = hass.states[ids.week];
+    const lw = hass.states[ids.last_week];
+    const m = hass.states[ids.this_month];
+    const lm = hass.states[ids.last_month];
+    const sw = hass.states[ids.sw];
+    const sun = hass.states["sun.sun"]?.state;
+    return [
+      t.status, t.arrival, t.departure, t.lunch,
+      t.daily_net_target, t.auto_departure_time, t.auto_lunch_default,
+      (t.recent_days || []).length,
+      w?.state, (w?.attributes?.days || []).length, w?.attributes?.overtime,
+      lw?.state, (lw?.attributes?.days || []).length, lw?.attributes?.overtime,
+      m?.state, m?.attributes?.month, m?.attributes?.overtime,
+      lm?.state, lm?.attributes?.month, lm?.attributes?.overtime,
+      sw?.state,
+      sun,
+      this._lookupDate,
+    ].join("|");
+  }
+
+  _renderLive() {
+    if (this._editing && this.shadowRoot.getElementById("modal-backdrop")) return;
+    if (!this._hass) return;
+    if (!this.shadowRoot.querySelector(".elapsed")) {
+      // No DOM yet — let _render build it.
+      this._render();
+      return;
+    }
+    const ids = this._entityIds();
+    const t = this._hass.states[ids.today];
+    if (!t) return;
+    const attr = t.attributes || {};
+    const hours = parseFloat(attr.hours) || 0;
+    const target = parseFloat(attr.daily_net_target) || 8;
+    const { h, m } = _hoursToHM(hours);
+    const overTarget = hours > target;
+
+    const elapsedEl = this.shadowRoot.querySelector(".elapsed");
+    if (elapsedEl) {
+      const key = `${h}|${m}`;
+      if (elapsedEl.dataset.k !== key) {
+        elapsedEl.dataset.k = key;
+        elapsedEl.innerHTML =
+          `<span>${h}</span><span class="unit">h</span>` +
+          `<span>${String(m).padStart(2, "0")}</span><span class="unit">m</span>`;
+      }
+    }
+
+    const fillEl = this.shadowRoot.querySelector(".fill");
+    if (fillEl) {
+      const pct = Math.min(100, (hours / target) * 100);
+      fillEl.style.width = `${pct}%`;
+      fillEl.classList.toggle("over", overTarget);
+    }
+
+    const subEl = this.shadowRoot.querySelector(".elapsed-sub");
+    if (subEl) {
+      const sk = `${target}|${hours.toFixed(3)}`;
+      if (subEl.dataset.sk !== sk) {
+        subEl.dataset.sk = sk;
+        let html = `<span>Target <span class="mono">${_fmtHM(target)}</span></span>`;
+        if (hours > 0) {
+          const cls = overTarget ? "over" : "under";
+          const txt = overTarget
+            ? `+${_fmtHM(hours - target)} over`
+            : `−${_fmtHM(target - hours)} to go`;
+          html += `<span class="dot"></span><span class="delta ${cls}">${txt}</span>`;
+        }
+        subEl.innerHTML = html;
+      }
+    }
   }
 
   _render() {
     const hass = this._hass;
     if (!hass) return;
-    // While the edit modal is open, skip re-renders so the open time
-    // picker, focused input, and partially-typed values survive the
-    // 1s tick and incoming hass state updates. _closeEdit/_saveEdit
-    // clear this._editing and call _render() to resume normal updates.
     if (this._editing && this.shadowRoot.getElementById("modal-backdrop")) return;
 
     const ids = this._entityIds();
@@ -259,7 +367,6 @@ class WorktimeTrackerCard extends HTMLElement {
     const target = parseFloat(attr.daily_net_target) || 8.0;
     const overTarget = hours > target;
     const overAmount = hours - target;
-
     const { h: elapsedH, m: elapsedM } = _hoursToHM(hours);
     const progressPct = Math.min(100, (hours / target) * 100);
 
@@ -273,14 +380,11 @@ class WorktimeTrackerCard extends HTMLElement {
     const autoOutTime = autoOutTimeRaw.slice(0, 5);
 
     const weekHours = weekState ? parseFloat(weekState.state) || 0 : 0;
-    const weekOvertime = parseFloat(weekAttr.overtime) || 0;
-    const weekTarget = parseFloat(weekAttr.weekly_target) || 40;
     const weekDays = weekAttr.days || [];
     const weekFilled = weekDays.filter((d) => d && d.type !== "none" && parseFloat(d.hours) > 0);
     const weekAvgH = weekFilled.length ? weekHours / weekFilled.length : 0;
 
     const lastWeekHours = lastWeekState ? parseFloat(lastWeekState.state) || 0 : 0;
-    const lastWeekOvertime = parseFloat(lastWeekAttr.overtime) || 0;
     const lastWeekDays = lastWeekAttr.days || [];
     const lastWeekFilled = lastWeekDays.filter((d) => d && d.type !== "none" && parseFloat(d.hours) > 0);
     const lastWeekAvgH = lastWeekFilled.length ? lastWeekHours / lastWeekFilled.length : 0;
@@ -294,12 +398,9 @@ class WorktimeTrackerCard extends HTMLElement {
     const lastMonthLabel = lastMonthAttr.month || "Last month";
 
     const historyLimit = parseInt(this._cfg("history_limit"), 10) || 10;
-    const history = (attr.recent_days || []).slice(0, historyLimit);
-    const historyAvgHours = history.length
-      ? history.reduce((s, d) => s + (parseFloat(d.hours) || 0), 0) / history.length
-      : 0;
+    const recentAll = attr.recent_days || [];
+    const history = recentAll.slice(0, historyLimit);
 
-    const editable = !!this._cfg("show_edit");
     const showTopbar = !!this._cfg("show_topbar");
     const showToday = !!this._cfg("show_today");
     const showThisWeek = !!this._cfg("show_this_week");
@@ -307,16 +408,38 @@ class WorktimeTrackerCard extends HTMLElement {
     const showThisMonth = !!this._cfg("show_this_month");
     const showLastMonth = !!this._cfg("show_last_month");
     const showHistory = !!this._cfg("show_history");
+    const showLookup = !!this._cfg("show_lookup");
     const showFooter = !!this._cfg("show_footer");
 
     const padding = parseInt(this._cfg("padding"), 10) || 14;
     const maxWidthRaw = parseInt(this._cfg("max_width"), 10);
     const maxWidthCss = !isNaN(maxWidthRaw) && maxWidthRaw > 0 ? `${maxWidthRaw}px` : "none";
+    const useDark = this._useDarkTheme();
+
+    // Pool of every known day, for the look-up box. Today is added
+    // synthetically so the picker can show "in progress" days.
+    const lookupPool = [];
+    const todayIso = _todayIso();
+    if (recentAll.length) lookupPool.push(...recentAll);
+    for (const wd of weekDays) if (wd?.date) lookupPool.push(wd);
+    for (const wd of lastWeekDays) if (wd?.date) lookupPool.push(wd);
+    if (attr.status && (attr.arrival || hours > 0)) {
+      lookupPool.push({
+        date: todayIso,
+        weekday: _weekdayShort(todayIso),
+        arrival: attr.arrival || "—",
+        departure: attr.departure || "—",
+        lunch: lunchStatus,
+        type: "normal",
+        hours: hours,
+      });
+    }
 
     this._dayTables = {
       this_week: weekDays,
       last_week: lastWeekDays,
       history: history,
+      lookup: lookupPool,
     };
 
     const elapsedHtml = `
@@ -338,13 +461,14 @@ class WorktimeTrackerCard extends HTMLElement {
     const weekListHtml = this._renderWeekList(weekDays, target);
     const lastWeekListHtml = this._renderWeekList(lastWeekDays, target);
     const historyListHtml = this._renderHistoryList(history, target);
+    const lookupBoxHtml = this._renderLookupBox(lookupPool, target);
 
     const modalHtml = this._editing ? this._renderModal(this._editing) : "";
 
     this.shadowRoot.innerHTML = `
-      <style>${this._styles(padding)}</style>
-      <ha-card>
-        <div class="app" style="--wt-pad:${padding}px;--wt-maxw:${maxWidthCss}">
+      <style>${this._styles(padding, maxWidthCss)}</style>
+      <ha-card class="${useDark ? "theme-dark" : ""}">
+        <div class="app">
           ${showTopbar ? `
             <header class="topbar">
               <span class="mono date">${_formatTopbarDate()}</span>
@@ -360,8 +484,8 @@ class WorktimeTrackerCard extends HTMLElement {
                 <div class="right">${pillHtml}</div>
               </div>
 
-              <div class="elapsed mono">${elapsedHtml}</div>
-              <div class="elapsed-sub">
+              <div class="elapsed mono" data-k="${elapsedH}|${elapsedM}">${elapsedHtml}</div>
+              <div class="elapsed-sub" data-sk="${target}|${hours.toFixed(3)}">
                 <span>Target <span class="mono">${_fmtHM(target)}</span></span>
                 ${subOverHtml}
               </div>
@@ -387,36 +511,23 @@ class WorktimeTrackerCard extends HTMLElement {
               </div>
 
               <div class="actions actions-3">
-                <button class="btn" id="btn-arrival">
-                  ${ICON.arrowRight}
-                  Arrival
-                </button>
-                <button class="btn" id="btn-reset" title="Reset today">
-                  ${ICON.reset}
-                  Reset
-                </button>
-                <button class="btn" id="btn-departure">
-                  ${ICON.arrowLeft}
-                  Departure
-                </button>
+                <button class="btn" id="btn-arrival">${ICON.arrowRight}Arrival</button>
+                <button class="btn" id="btn-reset" title="Reset today">${ICON.reset}Reset</button>
+                <button class="btn" id="btn-departure">${ICON.arrowLeft}Departure</button>
               </div>
               <div class="actions-grid">
                 <button class="btn toggle" id="btn-lunch" aria-pressed="${lunchOn}">
-                  ${ICON.lunch}
-                  Lunch<span class="meta">${lunchOn ? "yes" : "no"}</span>
+                  ${ICON.lunch}Lunch<span class="meta">${lunchOn ? "yes" : "no"}</span>
                 </button>
                 <button class="btn toggle" id="btn-auto" aria-pressed="${autoOn}">
-                  ${ICON.clock}
-                  Auto-out<span class="meta">${autoOutTime}</span>
+                  ${ICON.clock}Auto-out<span class="meta">${autoOutTime}</span>
                 </button>
               </div>
             </section>` : ""}
 
           ${showThisWeek ? `
             <section class="section">
-              <div class="section-head">
-                <div class="section-title">This week</div>
-              </div>
+              <div class="section-head"><div class="section-title">This week</div></div>
               <div class="list">
                 ${weekListHtml}
                 <div class="totals">
@@ -427,9 +538,7 @@ class WorktimeTrackerCard extends HTMLElement {
 
           ${showLastWeek ? `
             <section class="section">
-              <div class="section-head">
-                <div class="section-title">Last week</div>
-              </div>
+              <div class="section-head"><div class="section-title">Last week</div></div>
               <div class="list">
                 ${lastWeekListHtml}
                 <div class="totals">
@@ -443,10 +552,16 @@ class WorktimeTrackerCard extends HTMLElement {
 
           ${showHistory ? `
             <section class="section">
-              <div class="section-head">
-                <div class="section-title">History</div>
-              </div>
+              <div class="section-head"><div class="section-title">History</div></div>
               <div class="list">${historyListHtml}</div>
+            </section>` : ""}
+
+          ${showLookup ? `
+            <section class="section">
+              <div class="section-head">
+                <div class="section-title">Look up day</div>
+              </div>
+              ${lookupBoxHtml}
             </section>` : ""}
 
           ${showFooter ? `
@@ -498,7 +613,12 @@ class WorktimeTrackerCard extends HTMLElement {
       const timesHtml = empty
         ? `—`
         : `${d.arrival || "—"}<span class="sep">→</span>${d.departure || "—"}`;
-      const hoursHtml = empty ? "—" : (d.type === "sick" ? "sick" : d.type === "off" ? "off" : _fmtHM(hoursNum));
+      const hoursHtml = empty
+        ? "—"
+        : d.type === "sick" ? "sick"
+        : d.type === "off" ? "off"
+        : d.type === "flex" ? "flex"
+        : _fmtHM(hoursNum);
       const editCell = editable
         ? `<div class="edit" data-row="${i}" title="Edit">${ICON.pencil}</div>`
         : `<div></div>`;
@@ -520,18 +640,83 @@ class WorktimeTrackerCard extends HTMLElement {
       const pct = _miniBarPct(hoursNum, target);
       const overTarget = hoursNum > target;
       const editClass = editable ? "editable" : "";
+      const hoursLabel = d.type === "sick" ? "sick"
+        : d.type === "off" ? "off"
+        : d.type === "flex" ? "flex"
+        : _fmtHM(hoursNum);
       return `
         <div class="history-row ${editClass}" data-row="${i}">
           <div class="date">${d.date || "—"}</div>
           <div class="day">${d.weekday || "—"}</div>
           <div class="mini"><span class="${overTarget ? "over" : ""}" style="width:${pct}%"></span></div>
-          <div class="hours">${d.type === "sick" ? "sick" : d.type === "off" ? "off" : _fmtHM(hoursNum)}</div>
+          <div class="hours">${hoursLabel}</div>
         </div>`;
     }).join("");
   }
 
+  _renderLookupBox(pool, target) {
+    const date = this._lookupDate || _todayIso();
+    const match = (pool || []).find((d) => d.date === date);
+    const editable = !!this._cfg("show_edit");
+    const editBtn = (match && editable)
+      ? `<button class="btn ghost" id="lookup-edit">${ICON.pencil} Edit</button>`
+      : "";
+
+    let body;
+    if (!match) {
+      body = `
+        <div class="lookup-row empty">
+          <span class="lookup-k">No data</span>
+          <span class="lookup-v dim mono">—</span>
+        </div>`;
+    } else {
+      const hoursNum = parseFloat(match.hours) || 0;
+      const overTarget = hoursNum > target;
+      const typeLabel = match.type === "sick" ? "Sick"
+        : match.type === "off" ? "Off"
+        : match.type === "flex" ? "Flex"
+        : "Normal";
+      const arrival = match.arrival || "—";
+      const departure = match.departure || "—";
+      const lunch = _lunchLabel(match.lunch);
+      const hoursTxt = match.type === "sick" || match.type === "off" || match.type === "flex"
+        ? `${hoursNum.toFixed(2)}h`
+        : _fmtHM(hoursNum);
+      body = `
+        <div class="lookup-row">
+          <span class="lookup-k">Type</span>
+          <span class="lookup-v">${typeLabel}</span>
+        </div>
+        <div class="lookup-row">
+          <span class="lookup-k">Arrival</span>
+          <span class="lookup-v mono ${arrival === "—" ? "dim" : ""}">${arrival}</span>
+        </div>
+        <div class="lookup-row">
+          <span class="lookup-k">Departure</span>
+          <span class="lookup-v mono ${departure === "—" ? "dim" : ""}">${departure}</span>
+        </div>
+        <div class="lookup-row">
+          <span class="lookup-k">Lunch</span>
+          <span class="lookup-v mono ${lunch === "—" ? "dim" : ""}">${lunch}</span>
+        </div>
+        <div class="lookup-row total">
+          <span class="lookup-k">Hours</span>
+          <span class="lookup-v mono ${overTarget ? "over" : ""}">${hoursTxt}</span>
+        </div>`;
+    }
+
+    return `
+      <div class="lookup-card">
+        <div class="lookup-controls">
+          <input type="date" id="lookup-date" value="${date}" max="${_todayIso()}">
+          ${editBtn}
+        </div>
+        ${body}
+      </div>`;
+  }
+
   _renderModal(e) {
-    const isLeave = e.type === "sick" || e.type === "off";
+    const isLeave = e.type !== "normal";
     return `
       <div class="modal-backdrop" id="modal-backdrop">
         <div class="modal">
@@ -542,6 +727,7 @@ class WorktimeTrackerCard extends HTMLElement {
             <select id="ed-type">
               <option value="normal" ${e.type === "normal" ? "selected" : ""}>Normal</option>
               <option value="sick" ${e.type === "sick" ? "selected" : ""}>Sick</option>
+              <option value="flex" ${e.type === "flex" ? "selected" : ""}>Flex</option>
               <option value="off" ${e.type === "off" ? "selected" : ""}>Off / vacation</option>
             </select>
           </div>
@@ -565,9 +751,10 @@ class WorktimeTrackerCard extends HTMLElement {
             </select>
           </div>
 
-          <div class="field" id="ed-field-hours" style="${isLeave ? "" : "display:none"}">
-            <label>Hours (blank = default)</label>
+          <div class="field">
+            <label>Hours override (blank = default)</label>
             <input type="number" id="ed-hours" min="0" max="24" step="0.5" value="${e.hours}">
+            <div class="field-hint">For half-day sick or partial flex, set the credited hours here.</div>
           </div>
 
           <div class="row-actions">
@@ -591,36 +778,44 @@ class WorktimeTrackerCard extends HTMLElement {
       this._callService("set_lunch", { had_lunch: !on });
     });
     $("btn-auto")?.addEventListener("click", () => this._toggleSwitch());
-    $("link-export")?.addEventListener("click", (ev) => {
-      ev.preventDefault();
-      this._callService("export_today");
+    $("link-export")?.addEventListener("click", (ev) => { ev.preventDefault(); this._callService("export_today"); });
+    $("link-sheets")?.addEventListener("click", (ev) => { ev.preventDefault(); this._callService("export_today"); });
+
+    $("lookup-date")?.addEventListener("change", (ev) => {
+      this._lookupDate = ev.target.value || _todayIso();
+      this._stateSig = "";
+      this._render();
     });
-    $("link-sheets")?.addEventListener("click", (ev) => {
-      ev.preventDefault();
-      this._callService("export_today");
+    $("lookup-edit")?.addEventListener("click", () => {
+      const pool = this._dayTables?.lookup || [];
+      const match = pool.find((d) => d.date === this._lookupDate);
+      if (match) this._openEdit(match);
     });
 
     const editable = !!this._cfg("show_edit");
     if (editable) {
-      const lists = this.shadowRoot.querySelectorAll("section.section");
-      const tableKeysInOrder = [];
-      if (this._cfg("show_this_week")) tableKeysInOrder.push("this_week");
-      if (this._cfg("show_last_week")) tableKeysInOrder.push("last_week");
-      if (this._cfg("show_this_month")) tableKeysInOrder.push(null);
-      if (this._cfg("show_last_month")) tableKeysInOrder.push(null);
-      if (this._cfg("show_history")) tableKeysInOrder.push("history");
-      lists.forEach((sec, idx) => {
-        const key = tableKeysInOrder[idx];
-        if (!key) return;
+      const tableMap = [
+        ["show_this_week", "this_week"],
+        ["show_last_week", "last_week"],
+        ["show_this_month", null],
+        ["show_last_month", null],
+        ["show_history", "history"],
+      ];
+      const sections = this.shadowRoot.querySelectorAll("section.section");
+      let idx = 0;
+      for (const [cfgKey, dataKey] of tableMap) {
+        if (!this._cfg(cfgKey)) continue;
+        const sec = sections[idx++];
+        if (!sec || !dataKey) continue;
         sec.querySelectorAll(".row, .history-row").forEach((row) => {
           row.style.cursor = "pointer";
           row.addEventListener("click", () => {
             const i = parseInt(row.getAttribute("data-row"), 10);
-            const day = (this._dayTables[key] || [])[i];
+            const day = (this._dayTables[dataKey] || [])[i];
             this._openEdit(day);
           });
         });
-      });
+      }
     }
 
     if (this._editing) {
@@ -642,16 +837,18 @@ class WorktimeTrackerCard extends HTMLElement {
         $("ed-field-arrival").style.display = isLeave ? "none" : "";
         $("ed-field-departure").style.display = isLeave ? "none" : "";
         $("ed-field-lunch").style.display = isLeave ? "none" : "";
-        $("ed-field-hours").style.display = isLeave ? "" : "none";
       });
     }
   }
 
-  _styles(padding) {
+  _styles(padding, maxWidthCss) {
     return `
       @import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap');
 
       :host {
+        --wt-pad: ${padding}px;
+        --wt-maxw: ${maxWidthCss};
+
         --wt-bg:       #f4f3ee;
         --wt-paper:    #fbfaf6;
         --wt-card:     #ffffff;
@@ -668,6 +865,23 @@ class WorktimeTrackerCard extends HTMLElement {
         --wt-danger:       #b91c1c;
         display: block;
       }
+      ha-card.theme-dark {
+        --wt-bg:       #14141a;
+        --wt-paper:    #1c1c24;
+        --wt-card:     #20202a;
+        --wt-ink:      #f3f2ed;
+        --wt-ink-2:    #c8c8d0;
+        --wt-muted:    #8f8f99;
+        --wt-muted-2:  #5d5d68;
+        --wt-line:     #2e2e38;
+        --wt-line-2:   #26262f;
+        --wt-accent:       #a39bff;
+        --wt-accent-soft:  #2a2856;
+        --wt-good:         #4ade80;
+        --wt-warn:         #f59e0b;
+        --wt-danger:       #f87171;
+      }
+
       ha-card {
         background: var(--wt-bg);
         border: none;
@@ -687,44 +901,34 @@ class WorktimeTrackerCard extends HTMLElement {
       }
       .mono { font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-feature-settings: 'tnum', 'zero'; }
 
-      /* Topbar — date only, centered */
-      .topbar {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 6px 6px 14px;
-      }
-      .topbar .date {
-        font-size: 12px;
-        color: var(--wt-muted);
-      }
+      .topbar { display: flex; align-items: center; justify-content: center; padding: 4px 6px 12px; }
+      .topbar .date { font-size: 12px; color: var(--wt-muted); }
 
       /* TODAY */
       .today {
         background: var(--wt-card);
         border: 1px solid var(--wt-line);
-        border-radius: 18px;
-        padding: 14px 14px 12px;
+        border-radius: 16px;
+        padding: 12px 12px 10px;
       }
       .today-head {
         display: flex; align-items: center; justify-content: space-between;
-        margin-bottom: 10px;
+        margin-bottom: 6px;
       }
       .today-head .left {
         display: flex; align-items: center; gap: 8px;
-        font-size: 13px; font-weight: 600; color: var(--wt-ink);
+        font-size: 14px; font-weight: 500; color: var(--wt-ink);
       }
       .badge-icon {
         width: 26px; height: 26px;
         border-radius: 8px;
         background: var(--wt-ink);
-        color: #fff;
+        color: var(--wt-card);
         display: inline-flex; align-items: center; justify-content: center;
       }
       .badge-icon svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
       .today-head .right { display: flex; align-items: center; gap: 8px; }
 
-      /* On-the-clock pill — sized to match the "Today" label badge */
       .pill {
         display: inline-flex; align-items: center; gap: 8px;
         height: 26px; padding: 0 12px; border-radius: 999px;
@@ -747,9 +951,9 @@ class WorktimeTrackerCard extends HTMLElement {
 
       .elapsed {
         display: flex; align-items: baseline; gap: 4px;
-        font-weight: 500; font-size: 46px; line-height: 1;
-        letter-spacing: -0.03em;
-        padding: 4px 2px 6px;
+        font-weight: 500; font-size: 56px; line-height: 1;
+        letter-spacing: -0.035em;
+        padding: 2px 2px 4px;
       }
       .elapsed .unit {
         font-family: 'Geist', sans-serif;
@@ -758,7 +962,7 @@ class WorktimeTrackerCard extends HTMLElement {
         font-weight: 400; letter-spacing: 0;
       }
       .elapsed-sub {
-        font-size: 12px; color: var(--wt-muted);
+        font-size: 13px; color: var(--wt-muted);
         display: flex; gap: 10px; align-items: center;
         padding: 0 2px;
       }
@@ -767,7 +971,7 @@ class WorktimeTrackerCard extends HTMLElement {
       .elapsed-sub .dot { width: 3px; height: 3px; border-radius: 50%; background: var(--wt-muted-2); }
 
       .track {
-        margin: 12px 0 12px;
+        margin: 8px 0 10px;
         height: 6px; border-radius: 999px;
         background: var(--wt-line-2);
         position: relative;
@@ -779,10 +983,8 @@ class WorktimeTrackerCard extends HTMLElement {
         transition: width .5s cubic-bezier(.2,.7,.2,1);
       }
       .fill.over { background: var(--wt-warn); }
-      .mark {
-        position: absolute; top: -3px; bottom: -3px;
-        width: 1px; background: rgba(0,0,0,.18);
-      }
+      .mark { position: absolute; top: -3px; bottom: -3px; width: 1px; background: rgba(0,0,0,.18); }
+      .theme-dark .mark { background: rgba(255,255,255,.18); }
 
       .io {
         display: grid;
@@ -792,7 +994,7 @@ class WorktimeTrackerCard extends HTMLElement {
         overflow: hidden;
         background: var(--wt-paper);
       }
-      .io > div { padding: 9px 10px; border-right: 1px solid var(--wt-line-2); }
+      .io > div { padding: 8px 10px; border-right: 1px solid var(--wt-line-2); }
       .io > div:last-child { border-right: none; }
       .io-label {
         font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em;
@@ -800,18 +1002,18 @@ class WorktimeTrackerCard extends HTMLElement {
         margin-bottom: 2px;
       }
       .io-value {
-        font-weight: 500; font-size: 16px;
+        font-weight: 500; font-size: 18px;
         letter-spacing: -0.01em;
       }
       .io-value.dim { color: var(--wt-muted); }
 
-      .actions { margin-top: 10px; display: grid; gap: 8px; }
+      .actions { margin-top: 8px; display: grid; gap: 6px; }
       .actions-3 { grid-template-columns: 1fr 1fr 1fr; }
-      .actions-grid { margin-top: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .actions-grid { margin-top: 6px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
       .btn {
-        display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-        height: 44px; padding: 0 12px;
-        border-radius: 12px;
+        display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+        height: 42px; padding: 0 12px;
+        border-radius: 11px;
         border: 1px solid var(--wt-line);
         background: var(--wt-card);
         font-family: inherit; font-size: 14px; font-weight: 500;
@@ -820,52 +1022,44 @@ class WorktimeTrackerCard extends HTMLElement {
         letter-spacing: -0.005em;
       }
       .btn:active { transform: translateY(1px); }
-      .btn.primary { background: var(--wt-ink); color: #fff; border-color: var(--wt-ink); }
+      .btn.primary { background: var(--wt-ink); color: var(--wt-card); border-color: var(--wt-ink); }
+      .btn.ghost { background: transparent; }
       .btn .icon { width: 16px; height: 16px; flex-shrink: 0; }
       .btn .meta { color: var(--wt-muted); font-size: 12px; margin-left: 2px; }
       .btn.toggle[aria-pressed="true"] .meta {
-        color: var(--wt-ink);
-        font-weight: 600;
+        color: var(--wt-ink); font-weight: 600;
       }
       .btn.toggle[aria-pressed="true"] .meta::before {
-        content: "";
-        display: inline-block;
+        content: ""; display: inline-block;
         width: 6px; height: 6px; border-radius: 50%;
         background: var(--wt-accent);
         margin-right: 5px; vertical-align: middle;
       }
 
       /* Sections */
-      .section { margin-top: 20px; }
-      .section-head {
-        display: flex; justify-content: space-between; align-items: baseline;
-        padding: 0 2px;
-        margin-bottom: 8px;
+      .section { margin-top: 16px; }
+      .section-head { padding: 0 2px; margin-bottom: 6px; }
+      .section-title {
+        font-size: 14px; font-weight: 500;
+        letter-spacing: -0.01em;
+        color: var(--wt-ink);
       }
-      .section-title { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
       .section-title .title-meta {
-        color: var(--wt-muted); font-weight: 500; font-size: 11px;
+        color: var(--wt-muted); font-weight: 500; font-size: 12px;
         margin-left: 8px;
       }
-      .section-meta {
-        font-size: 11px; color: var(--wt-muted);
-        display: flex; gap: 10px; align-items: baseline;
-      }
-      .section-meta b { color: var(--wt-ink); font-weight: 600; }
-      .section-meta .pos { color: var(--wt-good); font-weight: 500; }
-      .section-meta .neg { color: var(--wt-warn); font-weight: 500; }
 
       .list {
         background: var(--wt-card);
         border: 1px solid var(--wt-line);
-        border-radius: 14px;
+        border-radius: 12px;
         overflow: hidden;
       }
       .row {
         display: grid;
-        grid-template-columns: 44px 1fr auto 24px;
+        grid-template-columns: 46px 1fr auto 24px;
         align-items: center;
-        padding: 11px 14px;
+        padding: 9px 14px;
         border-bottom: 1px solid var(--wt-line-2);
         gap: 10px;
         font-size: 14px;
@@ -877,13 +1071,13 @@ class WorktimeTrackerCard extends HTMLElement {
         font-family: 'Geist Mono', monospace; letter-spacing: 0;
       }
       .row .times {
-        font-family: 'Geist Mono', monospace; font-size: 13px;
+        font-family: 'Geist Mono', monospace; font-size: 14px;
         color: var(--wt-ink-2);
         letter-spacing: -0.005em;
       }
       .row .times .sep { color: var(--wt-muted-2); margin: 0 4px; }
       .row .hours {
-        font-family: 'Geist Mono', monospace; font-weight: 500; font-size: 14px;
+        font-family: 'Geist Mono', monospace; font-weight: 500; font-size: 15px;
         text-align: right;
       }
       .row .hours.over { color: var(--wt-warn); }
@@ -896,35 +1090,35 @@ class WorktimeTrackerCard extends HTMLElement {
         border-radius: 6px;
       }
       .row .edit:hover { color: var(--wt-ink); background: var(--wt-line-2); }
-      .row.today { background: rgba(67, 56, 202, 0.045); }
+      .row.today { background: var(--wt-accent-soft); }
       .row.today .day { color: var(--wt-accent); }
       .row.empty .times,
       .row.empty .hours { color: var(--wt-muted-2); }
 
       .totals {
         display: flex; align-items: center;
-        padding: 11px 14px;
+        padding: 9px 14px;
         background: var(--wt-paper);
         border-top: 1px solid var(--wt-line);
-        font-size: 12px;
+        font-size: 13px;
         color: var(--wt-muted);
       }
-      .totals b { color: var(--wt-ink); font-weight: 600; font-family: 'Geist Mono', monospace; }
+      .totals b { color: var(--wt-ink); font-weight: 500; font-family: 'Geist Mono', monospace; }
 
-      /* Month summary card */
+      /* Month summary */
       .month-card {
         background: var(--wt-card);
         border: 1px solid var(--wt-line);
-        border-radius: 14px;
-        padding: 10px 14px;
+        border-radius: 12px;
+        padding: 8px 14px;
       }
       .month-row {
         display: flex; justify-content: space-between; align-items: center;
-        padding: 6px 0;
+        padding: 5px 0;
       }
       .month-row + .month-row { border-top: 1px solid var(--wt-line-2); }
-      .month-k { font-size: 12px; color: var(--wt-muted); }
-      .month-v { font-size: 15px; font-weight: 500; }
+      .month-k { font-size: 13px; color: var(--wt-muted); }
+      .month-v { font-size: 16px; font-weight: 500; }
       .month-v.pos { color: var(--wt-good); }
       .month-v.neg { color: var(--wt-warn); }
 
@@ -932,23 +1126,63 @@ class WorktimeTrackerCard extends HTMLElement {
       .history-row {
         display: grid;
         grid-template-columns: 86px 36px 1fr auto;
-        padding: 10px 14px;
+        padding: 8px 14px;
         align-items: center;
         border-bottom: 1px solid var(--wt-line-2);
         gap: 10px;
-        font-size: 13px;
+        font-size: 14px;
       }
       .history-row:last-child { border-bottom: none; }
       .history-row.editable { cursor: pointer; }
-      .history-row .date { font-family: 'Geist Mono', monospace; font-size: 12px; color: var(--wt-ink-2); }
+      .history-row .date { font-family: 'Geist Mono', monospace; font-size: 13px; color: var(--wt-ink-2); }
       .history-row .day { font-size: 12px; color: var(--wt-muted); }
       .history-row .mini { height: 3px; background: var(--wt-line-2); border-radius: 999px; overflow: hidden; }
       .history-row .mini > span { display: block; height: 100%; background: var(--wt-ink); border-radius: 999px; }
       .history-row .mini > span.over { background: var(--wt-warn); }
-      .history-row .hours { font-family: 'Geist Mono', monospace; font-weight: 500; text-align: right; }
+      .history-row .hours { font-family: 'Geist Mono', monospace; font-weight: 500; font-size: 14px; text-align: right; }
+
+      /* Look-up box */
+      .lookup-card {
+        background: var(--wt-card);
+        border: 1px solid var(--wt-line);
+        border-radius: 12px;
+        padding: 10px 14px 12px;
+      }
+      .lookup-controls {
+        display: flex; align-items: center; gap: 8px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--wt-line-2);
+        margin-bottom: 6px;
+      }
+      .lookup-controls input[type="date"] {
+        flex: 1;
+        padding: 7px 10px;
+        border: 1px solid var(--wt-line);
+        border-radius: 10px;
+        background: var(--wt-paper);
+        color: var(--wt-ink);
+        font-family: 'Geist Mono', monospace;
+        font-size: 14px;
+        color-scheme: light;
+      }
+      .theme-dark .lookup-controls input[type="date"] { color-scheme: dark; }
+      .lookup-controls .btn { height: 34px; padding: 0 10px; gap: 4px; font-size: 13px; }
+      .lookup-row {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 5px 0;
+        font-size: 14px;
+      }
+      .lookup-row + .lookup-row { border-top: 1px solid var(--wt-line-2); }
+      .lookup-row.total { padding-top: 7px; margin-top: 2px; }
+      .lookup-row.total .lookup-v { font-size: 16px; font-weight: 600; }
+      .lookup-row.empty { padding: 12px 0 4px; }
+      .lookup-k { color: var(--wt-muted); font-size: 12px; }
+      .lookup-v { color: var(--wt-ink); font-weight: 500; }
+      .lookup-v.dim { color: var(--wt-muted-2); }
+      .lookup-v.over { color: var(--wt-warn); }
 
       .foot {
-        margin-top: 20px;
+        margin-top: 18px;
         display: flex; justify-content: space-between; align-items: center;
         color: var(--wt-muted); font-size: 11px;
         padding: 0 4px;
@@ -957,7 +1191,7 @@ class WorktimeTrackerCard extends HTMLElement {
       .foot a:hover { color: var(--wt-ink); }
       .foot-links { display: flex; gap: 14px; }
 
-      @media (max-width: 360px) { .elapsed { font-size: 40px; } }
+      @media (max-width: 360px) { .elapsed { font-size: 48px; } .io-value { font-size: 16px; } }
 
       /* Modal */
       .modal-backdrop {
@@ -968,22 +1202,25 @@ class WorktimeTrackerCard extends HTMLElement {
       }
       .modal {
         background: var(--wt-card); color: var(--wt-ink);
-        border-radius: 18px; padding: 20px;
+        border-radius: 16px; padding: 18px;
         width: min(420px, 92vw); max-height: 90vh;
         overflow-y: auto;
         box-shadow: 0 8px 24px rgba(0,0,0,0.3);
       }
       .modal h3 { margin: 0 0 12px; font-size: 1.05em; font-weight: 600; }
-      .modal .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+      .modal .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
       .modal .field label {
         font-size: 10px; color: var(--wt-muted);
         text-transform: uppercase; letter-spacing: 0.1em; font-weight: 500;
       }
+      .modal .field-hint { font-size: 11px; color: var(--wt-muted); margin-top: 2px; }
       .modal input, .modal select {
         padding: 10px; font-size: 14px; font-family: inherit;
         border: 1px solid var(--wt-line); border-radius: 10px;
         background: var(--wt-card); color: var(--wt-ink);
+        color-scheme: light;
       }
+      .theme-dark .modal input, .theme-dark .modal select { color-scheme: dark; }
       .modal .row-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
       .modal .row-actions .btn { flex: 0 0 auto; min-width: 90px; }`;
   }
@@ -1023,6 +1260,8 @@ class WorktimeTrackerCardEditor extends HTMLElement {
         <span>${label}</span>
       </label>`).join("");
 
+    const theme = this._get("theme") || "auto";
+
     this.shadowRoot.innerHTML = `
       <style>
         :host { display: block; padding: 8px 0; color: var(--primary-text-color); }
@@ -1037,7 +1276,7 @@ class WorktimeTrackerCardEditor extends HTMLElement {
         .row { display: flex; align-items: center; gap: 10px; padding: 4px 0; cursor: pointer; }
         .row input { transform: scale(1.1); }
         .num-row { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
-        input[type="number"], input[type="text"] {
+        input[type="number"], input[type="text"], select {
           padding: 6px 8px;
           border: 1px solid var(--divider-color, #ccc);
           border-radius: 6px;
@@ -1045,15 +1284,25 @@ class WorktimeTrackerCardEditor extends HTMLElement {
           color: var(--primary-text-color);
           width: 120px;
         }
-        .hint {
-          font-size: 0.8em;
-          color: var(--secondary-text-color);
-          margin-top: 8px;
-        }
+        select { width: 160px; }
+        .hint { font-size: 0.8em; color: var(--secondary-text-color); margin-top: 8px; }
       </style>
       <div class="group">
         <div class="group-title">Sections</div>
         ${sectionRows}
+      </div>
+      <div class="group">
+        <div class="group-title">Theme</div>
+        <div class="num-row">
+          <select id="ed-theme">
+            <option value="auto" ${theme === "auto" ? "selected" : ""}>Auto (follow sun)</option>
+            <option value="light" ${theme === "light" ? "selected" : ""}>Light</option>
+            <option value="dark" ${theme === "dark" ? "selected" : ""}>Dark</option>
+          </select>
+        </div>
+        <div class="hint">
+          <code>Auto</code> follows <code>sun.sun</code> — dark when the sun is below the horizon.
+        </div>
       </div>
       <div class="group">
         <div class="group-title">History rows</div>
@@ -1073,8 +1322,7 @@ class WorktimeTrackerCardEditor extends HTMLElement {
           <input id="ed-maxw" type="number" min="0" max="1200" value="${this._get("max_width")}">
         </div>
         <div class="hint">
-          Default <code>420</code> (phone-sized). Increase to use more of
-          a wide column. Set <code>0</code> to fill the container.
+          Default <code>420</code> (phone-sized). Increase to use more of a wide column. Set <code>0</code> to fill the container.
         </div>
       </div>
       <div class="group">
@@ -1084,8 +1332,7 @@ class WorktimeTrackerCardEditor extends HTMLElement {
         </div>
         <div class="hint">
           Leave blank for the default instance. Set to e.g. <code>home</code>
-          to point at <code>sensor.home_today_hours_today</code> (entities of
-          a second Worktime Tracker config entry).
+          to point at <code>sensor.home_today_hours_today</code>.
         </div>
       </div>
       <div class="hint">
@@ -1101,30 +1348,25 @@ class WorktimeTrackerCardEditor extends HTMLElement {
         this._emit();
       });
     });
-    this.shadowRoot.getElementById("ed-limit")?.addEventListener("input", (ev) => {
-      const n = parseInt(ev.target.value, 10);
-      if (!isNaN(n) && n > 0) {
-        this._config = { ...this._config, history_limit: n };
-        this._emit();
-      }
-    });
-    this.shadowRoot.getElementById("ed-padding")?.addEventListener("input", (ev) => {
-      const n = parseInt(ev.target.value, 10);
-      if (!isNaN(n) && n >= 0) {
-        this._config = { ...this._config, padding: n };
-        this._emit();
-      }
-    });
-    this.shadowRoot.getElementById("ed-maxw")?.addEventListener("input", (ev) => {
-      const n = parseInt(ev.target.value, 10);
-      if (!isNaN(n) && n >= 0) {
-        this._config = { ...this._config, max_width: n };
-        this._emit();
-      }
-    });
+    const onNum = (id, key, min = 0) => {
+      this.shadowRoot.getElementById(id)?.addEventListener("input", (ev) => {
+        const n = parseInt(ev.target.value, 10);
+        if (!isNaN(n) && n >= min) {
+          this._config = { ...this._config, [key]: n };
+          this._emit();
+        }
+      });
+    };
+    onNum("ed-limit", "history_limit", 1);
+    onNum("ed-padding", "padding", 0);
+    onNum("ed-maxw", "max_width", 0);
     this.shadowRoot.getElementById("ed-prefix")?.addEventListener("input", (ev) => {
       const v = (ev.target.value || "").trim().replace(/[^a-z0-9_]/gi, "_");
       this._config = { ...this._config, entity_prefix: v };
+      this._emit();
+    });
+    this.shadowRoot.getElementById("ed-theme")?.addEventListener("change", (ev) => {
+      this._config = { ...this._config, theme: ev.target.value };
       this._emit();
     });
   }
@@ -1137,7 +1379,7 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "worktime-tracker-card",
   name: "Worktime Tracker",
-  description: "Phone-first work-time tracker with Today / week / month / history.",
+  description: "Phone-first work-time tracker with Today / week / month / history / lookup.",
   preview: false,
   documentationURL: "https://github.com/ottoherdy/worktime-tracker",
 });

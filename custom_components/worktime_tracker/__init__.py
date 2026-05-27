@@ -209,7 +209,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         vol.Optional("arrival"): vol.Any(None, cv.string),
         vol.Optional("departure"): vol.Any(None, cv.string),
         vol.Optional("lunch"): vol.Any(None, "", vol.In([LUNCH_YES, LUNCH_NO, LUNCH_UNKNOWN])),
-        vol.Optional("type"): vol.Any(None, "", vol.In(["normal", "sick", "off"])),
+        vol.Optional("type"): vol.Any(None, "", vol.In(["normal", "sick", "off", "flex"])),
         vol.Optional("hours"): vol.Any(None, "", vol.Coerce(float)),
         vol.Optional("entry_prefix"): cv.string,
     })
