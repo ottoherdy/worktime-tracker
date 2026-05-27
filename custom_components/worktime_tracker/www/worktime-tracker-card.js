@@ -1,5 +1,5 @@
 /**
- * Worktime Tracker Lovelace Card — v2.5.0
+ * Worktime Tracker Lovelace Card — v2.5.1
  * Vanilla Web Component, no build step. Auto-loaded via add_extra_js_url.
  *
  * Config (all optional, defaults shown):
@@ -26,14 +26,29 @@
 const DOMAIN = "worktime_tracker";
 
 function _entities(prefix) {
-  const p = prefix ? `${prefix}_` : "";
+  const p = (prefix || "").trim();
+  if (!p) {
+    // Legacy layout — the first instance created its sensors before
+    // they were grouped under a single device, so each one lives on
+    // its own device slug ("Today" / "This week" / etc.).
+    return {
+      today: "sensor.today_hours_today",
+      week: "sensor.this_week_hours_this_week",
+      last_week: "sensor.last_week_hours_last_week",
+      this_month: "sensor.this_month_hours_this_month",
+      last_month: "sensor.last_month_hours_last_month",
+      sw: "switch.today_auto_departure",
+    };
+  }
+  // New unified layout — every sensor on the same device, so the
+  // prefix is the full device slug (e.g. "worktime_tracker_ellen").
   return {
-    today: `sensor.${p}today_hours_today`,
-    week: `sensor.${p}this_week_hours_this_week`,
-    last_week: `sensor.${p}last_week_hours_last_week`,
-    this_month: `sensor.${p}this_month_hours_this_month`,
-    last_month: `sensor.${p}last_month_hours_last_month`,
-    sw: `switch.${p}today_auto_departure`,
+    today: `sensor.${p}_hours_today`,
+    week: `sensor.${p}_hours_this_week`,
+    last_week: `sensor.${p}_hours_last_week`,
+    this_month: `sensor.${p}_hours_this_month`,
+    last_month: `sensor.${p}_hours_last_month`,
+    sw: `switch.${p}_auto_departure`,
   };
 }
 
@@ -1328,11 +1343,14 @@ class WorktimeTrackerCardEditor extends HTMLElement {
       <div class="group">
         <div class="group-title">Entity prefix (multi-instance)</div>
         <div class="num-row">
-          <input id="ed-prefix" type="text" placeholder="e.g. home" value="${this._get("entity_prefix") || ""}">
+          <input id="ed-prefix" type="text" placeholder="e.g. worktime_tracker_ellen" value="${this._get("entity_prefix") || ""}">
         </div>
         <div class="hint">
-          Leave blank for the default instance. Set to e.g. <code>home</code>
-          to point at <code>sensor.home_today_hours_today</code>.
+          Leave blank for the default (legacy) instance. For additional
+          instances, set the full device slug — look in Developer Tools →
+          States for <code>sensor.&lt;slug&gt;_hours_today</code>. Example:
+          for the device "Worktime Tracker Ellen", use
+          <code>worktime_tracker_ellen</code>.
         </div>
       </div>
       <div class="hint">
