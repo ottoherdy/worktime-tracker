@@ -1,5 +1,5 @@
 /**
- * Worktime Tracker Lovelace Card — v2.4.0
+ * Worktime Tracker Lovelace Card — v2.4.1
  * Vanilla Web Component, no build step. Auto-loaded via add_extra_js_url.
  *
  * Config (all optional, defaults shown):
@@ -37,7 +37,7 @@ function _entities(prefix) {
 }
 
 const DEFAULTS = {
-  show_topbar: true,
+  show_topbar: false,
   show_today: true,
   show_this_week: true,
   show_last_week: true,
@@ -380,7 +380,7 @@ class WorktimeTrackerCard extends HTMLElement {
               <div class="actions actions-3">
                 <button class="btn" id="btn-arrival">
                   ${ICON.arrowRight}
-                  Log arrival
+                  Arrival
                 </button>
                 <button class="btn" id="btn-reset" title="Reset today">
                   ${ICON.reset}
@@ -388,7 +388,7 @@ class WorktimeTrackerCard extends HTMLElement {
                 </button>
                 <button class="btn" id="btn-departure">
                   ${ICON.arrowLeft}
-                  Log departure
+                  Departure
                 </button>
               </div>
               <div class="actions-grid">
@@ -407,10 +407,6 @@ class WorktimeTrackerCard extends HTMLElement {
             <section class="section">
               <div class="section-head">
                 <div class="section-title">This week</div>
-                <div class="section-meta">
-                  <span>Total <b class="mono">${weekHours.toFixed(2)}h</b></span>
-                  <span class="${weekOvertime >= 0 ? "pos" : "neg"}">${_fmtDeltaHours(weekOvertime)}</span>
-                </div>
               </div>
               <div class="list">
                 ${weekListHtml}
@@ -424,10 +420,6 @@ class WorktimeTrackerCard extends HTMLElement {
             <section class="section">
               <div class="section-head">
                 <div class="section-title">Last week</div>
-                <div class="section-meta">
-                  <span>Total <b class="mono">${lastWeekHours.toFixed(2)}h</b></span>
-                  <span class="${lastWeekOvertime >= 0 ? "pos" : "neg"}">${_fmtDeltaHours(lastWeekOvertime)}</span>
-                </div>
               </div>
               <div class="list">
                 ${lastWeekListHtml}
@@ -444,7 +436,6 @@ class WorktimeTrackerCard extends HTMLElement {
             <section class="section">
               <div class="section-head">
                 <div class="section-title">History</div>
-                <div class="section-meta"><span>Avg <b class="mono">${_fmtHM(historyAvgHours)}</b></span></div>
               </div>
               <div class="list">${historyListHtml}</div>
             </section>` : ""}
@@ -468,8 +459,7 @@ class WorktimeTrackerCard extends HTMLElement {
     return `
       <section class="section">
         <div class="section-head">
-          <div class="section-title">${label}</div>
-          <div class="section-meta"><span class="mono">${monthName}</span></div>
+          <div class="section-title">${label}<span class="title-meta mono">${monthName}</span></div>
         </div>
         <div class="month-card">
           <div class="month-row">
@@ -824,10 +814,17 @@ class WorktimeTrackerCard extends HTMLElement {
       .btn.primary { background: var(--wt-ink); color: #fff; border-color: var(--wt-ink); }
       .btn .icon { width: 16px; height: 16px; flex-shrink: 0; }
       .btn .meta { color: var(--wt-muted); font-size: 12px; margin-left: 2px; }
-      .btn.toggle[aria-pressed="true"] {
-        background: var(--wt-ink); color: #fff; border-color: var(--wt-ink);
+      .btn.toggle[aria-pressed="true"] .meta {
+        color: var(--wt-ink);
+        font-weight: 600;
       }
-      .btn.toggle[aria-pressed="true"] .meta { color: rgba(255,255,255,0.65); }
+      .btn.toggle[aria-pressed="true"] .meta::before {
+        content: "";
+        display: inline-block;
+        width: 6px; height: 6px; border-radius: 50%;
+        background: var(--wt-accent);
+        margin-right: 5px; vertical-align: middle;
+      }
 
       /* Sections */
       .section { margin-top: 20px; }
@@ -837,6 +834,10 @@ class WorktimeTrackerCard extends HTMLElement {
         margin-bottom: 8px;
       }
       .section-title { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
+      .section-title .title-meta {
+        color: var(--wt-muted); font-weight: 500; font-size: 11px;
+        margin-left: 8px;
+      }
       .section-meta {
         font-size: 11px; color: var(--wt-muted);
         display: flex; gap: 10px; align-items: baseline;
