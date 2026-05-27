@@ -67,14 +67,15 @@ type: custom:worktime-tracker-card
 
 The card is capped at 420px wide on purpose — it's designed for a phone screen first, but renders cleanly on desktop dashboards too. No HACS frontend dependencies, no resource registration. Hard-refresh the browser the first time after install if the card doesn't show up.
 
-The card has six sections, top to bottom:
+The card sections (top to bottom):
 
-1. **Topbar** — brand, today's date, a settings gear (opens today's edit modal)
-2. **Today** — big elapsed time (`9h 34m`), target sub-line, progress bar, In/Out/Lunch strip, action buttons (Log arrival / Log departure / Lunch toggle / Auto-out toggle), Reset in the header
-3. **This week** — Mon–Fri list with weekday + date + arrival → departure + hours, "today" row highlighted, plus a totals footer (`3 days · avg 9h 21m | vs 40h −11.97h`)
+1. **Topbar** — just today's date, centered
+2. **Today** — big elapsed time (`9h 34m`), target sub-line, progress bar, In/Out/Lunch strip, three white action buttons (Log arrival / Reset / Log departure) plus Lunch + Auto-out toggles; "On the clock" pulse pill in the header
+3. **This week** — Mon–Fri list with weekday + date + arrival → departure + hours, "today" row highlighted, totals footer (`3 days · avg 9h 21m`)
 4. **Last week** — same layout
-5. **History** — compact list with a mini-bar per day; bar fills warn-orange when over the daily target
-6. **Footer** — `Saved locally` left, `Export` / `Sheets` right (both call `worktime_tracker.export_today`)
+5. **This month** / **Last month** (default off) — compact summary cards with total hours + overtime
+6. **History** — compact list with a mini-bar per day; bar fills warn-orange when over the daily target
+7. **Footer** — `Saved locally` left, `Export` / `Sheets` right (both call `worktime_tracker.export_today`)
 
 Inline edit: tap any row (or the ✏️ pencil) in a day table to open the edit modal pre-filled with that day's arrival, departure, lunch and type (normal / sick / off). Save calls `worktime_tracker.edit_day`.
 
