@@ -113,7 +113,13 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         )
         self.hass = hass
         self.entry = entry
-        self._store: Store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
+        # Per-entry storage so multiple instances don't clobber each other.
+        # The legacy single-file key (worktime_tracker.history) is kept around
+        # for one-time migration on the oldest entry — see _async_load().
+        self._store: Store = Store(
+            hass, STORAGE_VERSION, f"{STORAGE_KEY}_{entry.entry_id}"
+        )
+        self._legacy_store: Store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
         self._unsub: list[Any] = []
         self._unsub_auto_export: Any = None
 
@@ -1034,9 +1040,34 @@ class WorktimeCoordinator(DataUpdateCoordinator):
     # ------------------------------------------------------------------
     # Persistence
     # ------------------------------------------------------------------
+    def _is_oldest_entry(self) -> bool:
+        """Whether this entry is the earliest active config entry of the
+        domain. Used to decide which entry inherits the pre-2.5.2 single-
+        file storage."""
+        entries = self.hass.config_entries.async_entries(DOMAIN)
+        if not entries:
+            return False
+        return entries[0].entry_id == self.entry.entry_id
+
     async def _async_load(self) -> None:
-        """Load storage, migrate v1 → v2 if needed."""
-        raw = await self._store.async_load() or {}
+        """Load storage, migrate v1 → v2 if needed, and (one-time)
+        migrate the legacy shared file into this entry's per-entry file
+        if this is the oldest config entry."""
+        raw = await self._store.async_load()
+        if not raw and self._is_oldest_entry():
+            legacy = await self._legacy_store.async_load()
+            if legacy:
+                _LOGGER.info(
+                    "Worktime: migrating legacy shared storage into entry %s",
+                    self.entry.entry_id,
+                )
+                raw = legacy
+                # Persist into the per-entry file so we never re-migrate.
+                await self._store.async_save(legacy)
+                # Drop the shared file so any newly-added entry starts
+                # genuinely empty instead of inheriting the same data.
+                await self._legacy_store.async_remove()
+        raw = raw or {}
         schema_version = raw.get("schema_version", 1)
 
         if schema_version == 1:
