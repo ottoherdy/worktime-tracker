@@ -169,6 +169,13 @@ Each entry in the `days` attribute list contains: `date`, `weekday`, `arrival`, 
 |---|---|
 | `switch.today_auto_departure` | Toggle auto-departure on/off from the dashboard |
 
+### Number
+
+| Entity | Description |
+|---|---|
+| `number.today_arrival_margin` | Minutes added to GPS-triggered arrival (e.g. `3` → arrival logged 3 min later than zone entry). `0` disables. Manual button presses are unaffected. |
+| `number.today_departure_margin` | Minutes subtracted from GPS-triggered departure (e.g. `3` → departure logged 3 min earlier than zone exit). `0` disables. Manual button presses are unaffected. |
+
 ---
 
 ## Services

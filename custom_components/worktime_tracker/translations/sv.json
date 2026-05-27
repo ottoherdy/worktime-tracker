@@ -71,6 +71,10 @@
     "binary_sensor": {
       "at_work": {"name": "På jobbet"},
       "day_complete": {"name": "Dag klar"}
+    },
+    "number": {
+      "arrival_margin": {"name": "Ankomstmarginal"},
+      "departure_margin": {"name": "Avresemarginal"}
     }
   },
   "services": {

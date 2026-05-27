@@ -71,6 +71,10 @@
     "binary_sensor": {
       "at_work": {"name": "At work"},
       "day_complete": {"name": "Day complete"}
+    },
+    "number": {
+      "arrival_margin": {"name": "Arrival margin"},
+      "departure_margin": {"name": "Departure margin"}
     }
   },
   "services": {

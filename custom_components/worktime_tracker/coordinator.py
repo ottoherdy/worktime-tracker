@@ -54,6 +54,8 @@ from .const import (
     CONF_AUTO_EXPORT_DELAY_HOURS,
     CONF_AUTO_EXPORT_ENABLED,
     CONF_AUTO_LUNCH_DEFAULT,
+    CONF_ARRIVAL_MARGIN_MINUTES,
+    CONF_DEPARTURE_MARGIN_MINUTES,
     CONF_LUNCH_DEDUCTION,
     CONF_LUNCH_TIME,
     CONF_NOTIFY_SERVICE,
@@ -66,17 +68,20 @@ from .const import (
     DAY_TYPE_NORMAL,
     DAY_TYPE_OFF,
     DAY_TYPE_SICK,
+    DEFAULT_ARRIVAL_MARGIN_MINUTES,
     DEFAULT_AUTO_DEPARTURE_ENABLED,
     DEFAULT_AUTO_DEPARTURE_TIME,
     DEFAULT_AUTO_EXPORT_DELAY_HOURS,
     DEFAULT_AUTO_EXPORT_ENABLED,
     DEFAULT_AUTO_LUNCH_DEFAULT,
+    DEFAULT_DEPARTURE_MARGIN_MINUTES,
     DEFAULT_LUNCH_DEDUCTION,
     DEFAULT_LUNCH_TIME,
     DEFAULT_SHEETS_WORKSHEET,
     DEFAULT_WEEKLY_TARGET,
     DEFAULT_WORKDAY_HOURS,
     DOMAIN,
+    MAX_MARGIN_MINUTES,
     EVENT_NOTIFICATION_ACTION,
     LUNCH_NO,
     LUNCH_UNKNOWN,
@@ -118,6 +123,8 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         self._lunch_notified: bool = False
         self._today_date: date | None = None  # which date the above state belongs to
         self._auto_departure_enabled: bool = False
+        self._arrival_margin_minutes: int = DEFAULT_ARRIVAL_MARGIN_MINUTES
+        self._departure_margin_minutes: int = DEFAULT_DEPARTURE_MARGIN_MINUTES
 
         # Persisted data
         self.history: list[dict[str, Any]] = []          # completed normal work days
@@ -208,6 +215,14 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         return float(
             self.options.get(CONF_AUTO_EXPORT_DELAY_HOURS, DEFAULT_AUTO_EXPORT_DELAY_HOURS)
         )
+
+    @property
+    def arrival_margin_minutes(self) -> int:
+        return self._arrival_margin_minutes
+
+    @property
+    def departure_margin_minutes(self) -> int:
+        return self._departure_margin_minutes
 
     @property
     def daily_net_target(self) -> float:
@@ -399,7 +414,16 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         if self.arrival is not None and not manual:
             return
         now = dt_util.now()
-        self.arrival = now
+        stamp = now
+        if not manual and self._arrival_margin_minutes > 0:
+            stamp = now + timedelta(minutes=self._arrival_margin_minutes)
+            _LOGGER.info(
+                "Worktime: applying arrival margin +%d min (%s → %s)",
+                self._arrival_margin_minutes,
+                now.isoformat(),
+                stamp.isoformat(),
+            )
+        self.arrival = stamp
         self._departure = None
         self._lunch_notified = False
         self.lunch_status = LUNCH_UNKNOWN
@@ -414,7 +438,19 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("Worktime: departure ignored — no arrival registered")
             return
         now = dt_util.now()
-        self._departure = now
+        stamp = now
+        if not manual and self._departure_margin_minutes > 0:
+            stamp = now - timedelta(minutes=self._departure_margin_minutes)
+            # Never set departure before arrival
+            if stamp < self.arrival:
+                stamp = self.arrival
+            _LOGGER.info(
+                "Worktime: applying departure margin -%d min (%s → %s)",
+                self._departure_margin_minutes,
+                now.isoformat(),
+                stamp.isoformat(),
+            )
+        self._departure = stamp
 
         # Resolve lunch at departure time using early-departure guard
         if self.lunch_status == LUNCH_UNKNOWN:
@@ -569,6 +605,16 @@ class WorktimeCoordinator(DataUpdateCoordinator):
 
     async def async_set_auto_departure_enabled(self, enabled: bool) -> None:
         self._auto_departure_enabled = enabled
+        await self._async_save()
+        self.async_set_updated_data(self.snapshot())
+
+    async def async_set_arrival_margin_minutes(self, minutes: int) -> None:
+        self._arrival_margin_minutes = max(0, min(MAX_MARGIN_MINUTES, int(minutes)))
+        await self._async_save()
+        self.async_set_updated_data(self.snapshot())
+
+    async def async_set_departure_margin_minutes(self, minutes: int) -> None:
+        self._departure_margin_minutes = max(0, min(MAX_MARGIN_MINUTES, int(minutes)))
         await self._async_save()
         self.async_set_updated_data(self.snapshot())
 
@@ -1005,6 +1051,21 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                 self.options.get(CONF_AUTO_DEPARTURE_ENABLED, DEFAULT_AUTO_DEPARTURE_ENABLED)
             )
 
+        self._arrival_margin_minutes = max(
+            0,
+            min(
+                MAX_MARGIN_MINUTES,
+                int(raw.get("arrival_margin_minutes", DEFAULT_ARRIVAL_MARGIN_MINUTES)),
+            ),
+        )
+        self._departure_margin_minutes = max(
+            0,
+            min(
+                MAX_MARGIN_MINUTES,
+                int(raw.get("departure_margin_minutes", DEFAULT_DEPARTURE_MARGIN_MINUTES)),
+            ),
+        )
+
         # Restore today's in-memory state
         today_data = raw.get("today")
         if today_data and today_data.get("date"):
@@ -1074,6 +1135,8 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         await self._store.async_save({
             "schema_version": STORAGE_VERSION,
             "auto_departure_enabled": self._auto_departure_enabled,
+            "arrival_margin_minutes": self._arrival_margin_minutes,
+            "departure_margin_minutes": self._departure_margin_minutes,
             "today": today_blob,
             "history": self.history,
             "leave_records": self.leave_records,
