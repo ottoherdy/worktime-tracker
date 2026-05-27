@@ -65,6 +65,7 @@ from .const import (
     CONF_WEEKLY_TARGET,
     CONF_WORK_ZONE,
     CONF_WORKDAY_HOURS,
+    DAY_TYPE_FLEX,
     DAY_TYPE_NORMAL,
     DAY_TYPE_OFF,
     DAY_TYPE_SICK,
@@ -517,8 +518,11 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             local = datetime(ref_date.year, ref_date.month, ref_date.day, h, m)
             return dt_util.as_utc(dt_util.as_local(local))
 
-        if day_type in (DAY_TYPE_SICK, DAY_TYPE_OFF):
-            if day_type == DAY_TYPE_SICK:
+        if day_type in (DAY_TYPE_SICK, DAY_TYPE_OFF, DAY_TYPE_FLEX):
+            if day_type in (DAY_TYPE_SICK, DAY_TYPE_FLEX):
+                # Sick/flex default to a full net workday's worth of credit,
+                # but the caller can override via the hours argument
+                # (e.g. half-day sick: pass hours=4).
                 default_hours = float(
                     self.options.get(CONF_WORKDAY_HOURS, DEFAULT_WORKDAY_HOURS)
                 ) - self.lunch_deduction
@@ -1201,7 +1205,12 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         row = {
             "Date": target_date.isoformat(),
             "Weekday": _WEEKDAYS[target_date.weekday()],
-            "Type": "Sick" if day_type == DAY_TYPE_SICK else ("Off" if day_type == DAY_TYPE_OFF else "Normal"),
+            "Type": (
+                "Sick" if day_type == DAY_TYPE_SICK
+                else "Off" if day_type == DAY_TYPE_OFF
+                else "Flex" if day_type == DAY_TYPE_FLEX
+                else "Normal"
+            ),
             "Arrival": self._format_time(arrival),
             "Planned end": self._format_time(planned),
             "Departure": self._format_time(departure),
