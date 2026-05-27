@@ -1,5 +1,5 @@
 /**
- * Worktime Tracker Lovelace Card — v2.5.1
+ * Worktime Tracker Lovelace Card — v2.6.0
  * Vanilla Web Component, no build step. Auto-loaded via add_extra_js_url.
  *
  * Config (all optional, defaults shown):
@@ -494,7 +494,8 @@ class WorktimeTrackerCard extends HTMLElement {
               <div class="today-head">
                 <div class="left">
                   <span class="badge-icon">${ICON.briefcase}</span>
-                  Today
+                  <span>Today</span>
+                  <span class="today-date mono">${_todayIso()}</span>
                 </div>
                 <div class="right">${pillHtml}</div>
               </div>
@@ -528,38 +529,30 @@ class WorktimeTrackerCard extends HTMLElement {
               <div class="actions actions-3">
                 <button class="btn" id="btn-arrival">${ICON.arrowRight}Arrival</button>
                 <button class="btn" id="btn-reset" title="Reset today">${ICON.reset}Reset</button>
-                <button class="btn" id="btn-departure">${ICON.arrowLeft}Departure</button>
-              </div>
-              <div class="actions-grid">
-                <button class="btn toggle" id="btn-lunch" aria-pressed="${lunchOn}">
-                  ${ICON.lunch}Lunch<span class="meta">${lunchOn ? "yes" : "no"}</span>
-                </button>
-                <button class="btn toggle" id="btn-auto" aria-pressed="${autoOn}">
-                  ${ICON.clock}Auto-out<span class="meta">${autoOutTime}</span>
-                </button>
+                <button class="btn" id="btn-departure">${ICON.arrowRight}Departure</button>
               </div>
             </section>` : ""}
 
           ${showThisWeek ? `
             <section class="section">
-              <div class="section-head"><div class="section-title">This week</div></div>
-              <div class="list">
-                ${weekListHtml}
-                <div class="totals">
-                  <span>${weekFilled.length} ${weekFilled.length === 1 ? "day" : "days"} · avg <b class="mono">${_fmtHM(weekAvgH)}</b></span>
+              <div class="section-head">
+                <div class="section-title">This week</div>
+                <div class="section-total">
+                  ${weekFilled.length} ${weekFilled.length === 1 ? "day" : "days"} · avg <b class="mono">${_fmtHM(weekAvgH)}</b>
                 </div>
               </div>
+              <div class="list">${weekListHtml}</div>
             </section>` : ""}
 
           ${showLastWeek ? `
             <section class="section">
-              <div class="section-head"><div class="section-title">Last week</div></div>
-              <div class="list">
-                ${lastWeekListHtml}
-                <div class="totals">
-                  <span>${lastWeekFilled.length} ${lastWeekFilled.length === 1 ? "day" : "days"} · avg <b class="mono">${_fmtHM(lastWeekAvgH)}</b></span>
+              <div class="section-head">
+                <div class="section-title">Last week</div>
+                <div class="section-total">
+                  ${lastWeekFilled.length} ${lastWeekFilled.length === 1 ? "day" : "days"} · avg <b class="mono">${_fmtHM(lastWeekAvgH)}</b>
                 </div>
               </div>
+              <div class="list">${lastWeekListHtml}</div>
             </section>` : ""}
 
           ${showThisMonth ? this._renderMonthBlock("This month", monthLabel, monthHours, monthOvertime) : ""}
@@ -578,6 +571,16 @@ class WorktimeTrackerCard extends HTMLElement {
               </div>
               ${lookupBoxHtml}
             </section>` : ""}
+
+          ${showToday ? `
+            <div class="bottom-toggles">
+              <button class="btn toggle" id="btn-lunch" aria-pressed="${lunchOn}">
+                ${ICON.lunch}Lunch<span class="meta">${lunchOn ? "yes" : "no"}</span>
+              </button>
+              <button class="btn toggle" id="btn-auto" aria-pressed="${autoOn}">
+                ${ICON.clock}Auto-out<span class="meta">${autoOutTime}</span>
+              </button>
+            </div>` : ""}
 
           ${showFooter ? `
             <footer class="foot">
@@ -873,8 +876,8 @@ class WorktimeTrackerCard extends HTMLElement {
         --wt-muted-2:  #b6b6be;
         --wt-line:     #e7e5dd;
         --wt-line-2:   #efede6;
-        --wt-accent:       #4338ca;
-        --wt-accent-soft:  #ecebff;
+        --wt-accent:       #ea580c;
+        --wt-accent-soft:  #fef0e6;
         --wt-good:         #1f8a5b;
         --wt-warn:         #b45309;
         --wt-danger:       #b91c1c;
@@ -890,8 +893,8 @@ class WorktimeTrackerCard extends HTMLElement {
         --wt-muted-2:  #5d5d68;
         --wt-line:     #2e2e38;
         --wt-line-2:   #26262f;
-        --wt-accent:       #a39bff;
-        --wt-accent-soft:  #2a2856;
+        --wt-accent:       #fb923c;
+        --wt-accent-soft:  #3a2010;
         --wt-good:         #4ade80;
         --wt-warn:         #f59e0b;
         --wt-danger:       #f87171;
@@ -931,8 +934,13 @@ class WorktimeTrackerCard extends HTMLElement {
         margin-bottom: 6px;
       }
       .today-head .left {
-        display: flex; align-items: center; gap: 8px;
+        display: flex; align-items: center; gap: 10px;
         font-size: 14px; font-weight: 500; color: var(--wt-ink);
+      }
+      .today-head .today-date {
+        font-family: 'Geist Mono', monospace; font-feature-settings: 'tnum';
+        font-size: 12px; font-weight: 400;
+        color: var(--wt-muted); letter-spacing: 0;
       }
       .badge-icon {
         width: 26px; height: 26px;
@@ -955,13 +963,13 @@ class WorktimeTrackerCard extends HTMLElement {
       .pulse {
         width: 7px; height: 7px; border-radius: 50%;
         background: var(--wt-accent);
-        box-shadow: 0 0 0 0 rgba(67,56,202,.5);
+        box-shadow: 0 0 0 0 rgba(234,88,12,.5);
         animation: wt-pulse 1.8s infinite;
       }
       @keyframes wt-pulse {
-        0% { box-shadow: 0 0 0 0 rgba(67,56,202,.5); }
-        70% { box-shadow: 0 0 0 7px rgba(67,56,202,0); }
-        100% { box-shadow: 0 0 0 0 rgba(67,56,202,0); }
+        0% { box-shadow: 0 0 0 0 rgba(234,88,12,.5); }
+        70% { box-shadow: 0 0 0 7px rgba(234,88,12,0); }
+        100% { box-shadow: 0 0 0 0 rgba(234,88,12,0); }
       }
 
       .elapsed {
@@ -1053,7 +1061,11 @@ class WorktimeTrackerCard extends HTMLElement {
 
       /* Sections */
       .section { margin-top: 16px; }
-      .section-head { padding: 0 2px; margin-bottom: 6px; }
+      .section-head {
+        padding: 0 2px; margin-bottom: 6px;
+        display: flex; align-items: baseline; justify-content: space-between;
+        gap: 12px;
+      }
       .section-title {
         font-size: 14px; font-weight: 500;
         letter-spacing: -0.01em;
@@ -1062,6 +1074,13 @@ class WorktimeTrackerCard extends HTMLElement {
       .section-title .title-meta {
         color: var(--wt-muted); font-weight: 500; font-size: 12px;
         margin-left: 8px;
+      }
+      .section-total {
+        font-size: 12px; color: var(--wt-muted);
+      }
+      .section-total b {
+        color: var(--wt-ink); font-weight: 500;
+        font-family: 'Geist Mono', monospace; font-feature-settings: 'tnum';
       }
 
       .list {
@@ -1086,11 +1105,12 @@ class WorktimeTrackerCard extends HTMLElement {
         font-family: 'Geist Mono', monospace; letter-spacing: 0;
       }
       .row .times {
-        font-family: 'Geist Mono', monospace; font-size: 14px;
-        color: var(--wt-ink-2);
-        letter-spacing: -0.005em;
+        font-family: 'Geist Mono', monospace; font-size: 17px;
+        font-weight: 500;
+        color: var(--wt-ink);
+        letter-spacing: -0.01em;
       }
-      .row .times .sep { color: var(--wt-muted-2); margin: 0 4px; }
+      .row .times .sep { color: var(--wt-muted-2); margin: 0 5px; font-weight: 400; }
       .row .hours {
         font-family: 'Geist Mono', monospace; font-weight: 500; font-size: 15px;
         text-align: right;
@@ -1109,16 +1129,6 @@ class WorktimeTrackerCard extends HTMLElement {
       .row.today .day { color: var(--wt-accent); }
       .row.empty .times,
       .row.empty .hours { color: var(--wt-muted-2); }
-
-      .totals {
-        display: flex; align-items: center;
-        padding: 9px 14px;
-        background: var(--wt-paper);
-        border-top: 1px solid var(--wt-line);
-        font-size: 13px;
-        color: var(--wt-muted);
-      }
-      .totals b { color: var(--wt-ink); font-weight: 500; font-family: 'Geist Mono', monospace; }
 
       /* Month summary */
       .month-card {
@@ -1196,8 +1206,13 @@ class WorktimeTrackerCard extends HTMLElement {
       .lookup-v.dim { color: var(--wt-muted-2); }
       .lookup-v.over { color: var(--wt-warn); }
 
-      .foot {
+      .bottom-toggles {
         margin-top: 18px;
+        display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+      }
+
+      .foot {
+        margin-top: 14px;
         display: flex; justify-content: space-between; align-items: center;
         color: var(--wt-muted); font-size: 11px;
         padding: 0 4px;
