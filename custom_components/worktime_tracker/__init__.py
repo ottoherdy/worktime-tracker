@@ -5,6 +5,7 @@ import logging
 import os
 import voluptuous as vol
 
+from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -37,7 +38,7 @@ _CARD_FILENAME = "worktime-tracker-card.js"
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
-    """Register static www path so the Lovelace card JS is served."""
+    """Register static www path and auto-load the Lovelace card."""
     await hass.http.async_register_static_paths([
         StaticPathConfig(
             f"/{DOMAIN}_www",
@@ -45,6 +46,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             cache_headers=False,
         )
     ])
+    add_extra_js_url(hass, f"/{DOMAIN}_www/{_CARD_FILENAME}")
     return True
 
 

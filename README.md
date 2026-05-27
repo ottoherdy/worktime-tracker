@@ -50,9 +50,19 @@ All settings can be changed later under **Configure** on the integration card.
 
 ### 3 — Add the dashboard
 
-Open `dashboards/dashboard.yaml`, replace `person.your_person` with your own person entity, and paste the content into a new Lovelace view.
+You have two options:
 
-Required HACS frontend cards:
+**Option A — Bundled custom card (simplest).** The integration ships its own Lovelace card and auto-loads it. Just add a manual card to any dashboard:
+
+```yaml
+type: custom:worktime-tracker-card
+```
+
+No HACS frontend dependencies. No resource registration. Hard-refresh the browser the first time after install if the card doesn't show up.
+
+**Option B — Full dashboard YAML.** Open `dashboards/dashboard.yaml`, replace `person.your_person` with your own person entity, and paste the content into a new Lovelace view.
+
+Required HACS frontend cards for option B:
 - [Bubble Card](https://github.com/Clooos/Bubble-Card)
 - [Flex Table Card](https://github.com/custom-cards/flex-table-card)
 

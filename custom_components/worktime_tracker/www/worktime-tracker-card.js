@@ -1,7 +1,7 @@
 /**
  * Worktime Tracker Lovelace Card
  * Vanilla Web Component — no build step, no external dependencies.
- * Auto-registered via async_register_extra_module_url in __init__.py
+ * Auto-loaded via frontend.add_extra_js_url in __init__.py
  */
 
 const ENTITY_TODAY = "sensor.today_hours_today";
