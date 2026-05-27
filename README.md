@@ -67,6 +67,24 @@ type: custom:worktime-tracker-card
 
 No HACS frontend dependencies. No resource registration. Hard-refresh the browser the first time after install if the card doesn't show up.
 
+Inline edit: tap any row in "Recent days" to open an edit modal pre-filled with that day's arrival, departure, lunch and type (normal / sick / off). Save calls `worktime_tracker.edit_day` — no script needed.
+
+The card has these optional config keys (all default to `true`, so the bare `type:` line above gives you the full card):
+
+```yaml
+type: custom:worktime-tracker-card
+show_header: true           # title + status badge
+show_times: true            # big arrival / planned end / hours row
+show_progress: true         # progress bar
+show_lunch_status: true     # lunch badge + remaining/overtime line
+show_actions: true          # Log arrival / Log departure / Lunch ✓ / No lunch
+show_auto_departure: true   # Auto-depart toggle + Reset
+show_week: true             # week summary
+show_recent: true           # recent days table
+show_edit: true             # tap a row in recent days to edit
+recent_days_limit: 7        # how many days in the table
+```
+
 **Option B — Full dashboard YAML.** Open `dashboards/dashboard.yaml`, replace `person.your_person` with your own person entity, and paste the content into a new Lovelace view.
 
 Required HACS frontend cards for option B:
