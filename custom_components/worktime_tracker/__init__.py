@@ -8,7 +8,7 @@ import voluptuous as vol
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -55,6 +55,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Store coordinator on entry.runtime_data (HA 2024.x+)
     entry.runtime_data = coordinator
+
+    # Prune stale devices from older versions that registered multiple devices.
+    # The only valid device has identifiers {(DOMAIN, entry.entry_id)}.
+    reg = dr.async_get(hass)
+    valid_id = (DOMAIN, entry.entry_id)
+    for device in dr.async_entries_for_config_entry(reg, entry.entry_id):
+        if not any(ident[0] == DOMAIN for ident in device.identifiers):
+            continue
+        if valid_id in device.identifiers:
+            continue
+        _LOGGER.info("Worktime: removing stale device %s (%s)", device.name, device.id)
+        reg.async_remove_device(device.id)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
