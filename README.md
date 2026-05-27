@@ -48,19 +48,56 @@ Go to **Settings → Devices & Services → + Add Integration → Worktime Track
 
 All settings can be changed later under **Configure** on the integration card.
 
+Two more values are editable directly on the device page as `number` entities (not in the config flow, because you may want to tweak them on the fly):
+
+| Entity | Default | Description |
+|---|---|---|
+| `number.today_arrival_margin` | `0 min` | Minutes added to GPS-triggered arrival. `3` → 07:00 zone entry logged as 07:03. Manual button presses unaffected. |
+| `number.today_departure_margin` | `0 min` | Minutes subtracted from GPS-triggered departure. `3` → 17:00 zone exit logged as 16:57. Manual button presses unaffected. |
+
 ### 3 — Add the dashboard
 
-Open `dashboards/dashboard.yaml`, replace `person.your_person` with your own person entity, and paste the content into a new Lovelace view.
+You have two options:
 
-Required HACS frontend cards:
+**Option A — Bundled custom card (simplest).** The integration ships its own Lovelace card and auto-loads it. Just add a manual card to any dashboard:
+
+```yaml
+type: custom:worktime-tracker-card
+```
+
+No HACS frontend dependencies. No resource registration. Hard-refresh the browser the first time after install if the card doesn't show up.
+
+Inline edit: tap any row in "Recent days" to open an edit modal pre-filled with that day's arrival, departure, lunch and type (normal / sick / off). Save calls `worktime_tracker.edit_day` — no script needed.
+
+The card has these optional config keys (all default to `true`, so the bare `type:` line above gives you the full card):
+
+```yaml
+type: custom:worktime-tracker-card
+show_header: true           # title + status badge
+show_times: true            # big arrival / planned end / hours row
+show_progress: true         # progress bar
+show_lunch_status: true     # lunch badge + remaining/overtime line
+show_actions: true          # Log arrival / Log departure / Lunch ✓ / No lunch
+show_auto_departure: true   # Auto-depart toggle + Reset
+show_week: true             # week summary
+show_recent: true           # recent days table
+show_edit: true             # tap a row in recent days to edit
+recent_days_limit: 7        # how many days in the table
+```
+
+**Option B — Full dashboard YAML.** Open `dashboards/dashboard.yaml`, replace `person.your_person` with your own person entity, and paste the content into a new Lovelace view.
+
+Required HACS frontend cards for option B:
 - [Bubble Card](https://github.com/Clooos/Bubble-Card)
 - [Flex Table Card](https://github.com/custom-cards/flex-table-card)
 
-The dashboard uses a script entity (`script.edit_worktime_day`) for the Edit day button. Create it once in HA:
+The full dashboard (option B) uses a script entity (`script.edit_worktime_day`) for the Edit day button. Create it once in HA:
 
 1. Go to **Settings → Automations & Scenes → Scripts → Create Script → Edit in YAML**
 2. Paste the contents of `dashboards/script_edit_worktime_day.yaml`
 3. Save — HA will register it as `script.edit_worktime_day`
+
+Alternatively, call the `worktime_tracker.edit_day` service directly from **Developer Tools → Actions** or any automation.
 
 ### 4 — Google Sheets (optional)
 
@@ -75,15 +112,16 @@ The integration appends one row per day with these columns:
 |---|---|---|
 | Date | `2026-04-28` | ISO format |
 | Weekday | `Monday` | Full name |
-| Type | `Normal` / `Sick` | |
+| Type | `Normal` / `Sick` / `Off` | |
 | Arrival | `08:12` | HH:MM |
 | Planned end | `16:42` | HH:MM |
 | Departure | `16:38` | HH:MM |
-| Lunch | `yes` / `no` | |
+| Lunch | `yes` / `no` / `unknown` | |
 | Hours | `8.43` | Exact float |
 | Hours (rounded) | `8.50h` | Rounded up to nearest 15 min |
 | Overtime | `0.43` | Hours vs daily target |
 | Edited | `yes` / `no` | Marked when sent via edit_day |
+| Punch-out missing | `yes` / `no` | `yes` when the 03:00 rollover finalized the day without a departure |
 
 > **Note:** Format the `Hours` and `Overtime` columns in Google Sheets as **Number** (not Automatic) to avoid them being interpreted as dates.
 
@@ -108,26 +146,38 @@ The integration appends one row per day with these columns:
 
 | Button | Action |
 |---|---|
-| Log arrival | Register arrival right now |
-| Log departure | Register departure right now |
+| Log arrival | Register arrival right now (ignores arrival margin) |
+| Log departure | Register departure right now (ignores departure margin) |
 | Lunch — Yes | Mark lunch as taken |
 | Lunch — No | Mark lunch as not taken |
-| Edit day | Change arrival, departure, lunch, or type (normal/sick) for any date |
+| Edit day | Change arrival, departure, lunch, or type (normal/sick/off) for any date |
 | Send to Sheets | Manually send today's row |
 | Reset today | Clear today's data and start over |
 | Auto departure toggle | Enable/disable the auto-departure feature |
 
 ### Sick days
 
-Use the **Edit day** button on the dashboard. Set **Type → Sick day** and optionally enter the number of hours (default: 8h).
+Use the **Edit day** button on the dashboard. Set **Type → Sick day** and optionally enter the number of hours (default: net workday hours, e.g. 8h).
 
 - Counts toward hours and overtime just like a worked day
 - Sent to Google Sheets with `Type: Sick`
-- Supports partial days — specify hours or leave empty for a full 8h day
+- Supports partial days — specify hours or leave empty for the default
+
+### Off days / vacation
+
+Same flow as sick days, but pick **Type → Off**. Off days:
+
+- Count `0` hours by default (override via the `hours` field if needed)
+- Do **not** contribute to overtime
+- Sent to Google Sheets with `Type: Off`
 
 ### Edit any day
 
-Use the **Edit day** button or call `worktime_tracker.edit_day`. Lets you correct arrival, departure, lunch, or type for any historical date. Setting **Type: sick** converts the day to a sick day (8h default). The updated row is automatically sent to Google Sheets marked as `Edited: yes`.
+Call `worktime_tracker.edit_day` (Developer Tools → Actions or automations). Lets you correct arrival, departure, lunch, or type for any historical date. Setting **Type: sick** or **Type: off** converts the day. The updated row is automatically sent to Google Sheets marked as `Edited: yes`.
+
+### Arrival / departure margins
+
+Two `number.*` entities (see Configure) let you trim a few minutes off each end of GPS-triggered events so the recorded workday matches when you actually start/stop working rather than when you cross the geofence. Manual button presses log the exact time and ignore the margins.
 
 ### Auto export to Sheets
 
@@ -137,7 +187,11 @@ You can also send manually at any time using the **Send to Sheets** button.
 
 ### Day rollover
 
-At 03:00 each night the integration resets for the new day. If no departure was registered (e.g. GPS didn't trigger), the day is left as-is in history with 0 hours — you can correct it later with **Edit day**.
+At 03:00 each night the integration resets for the new day. If no departure was registered (e.g. GPS didn't trigger), the day is finalized with `Punch-out missing: yes` — you can correct it later with **Edit day**.
+
+### Friday time-report reminder
+
+Every Friday at 16:00 the integration sends a notification asking "Have you submitted your time report?" via the configured notify service. Answering **Yes, done** triggers a manual Google Sheets export of today's row. Disable by leaving the notify service blank.
 
 ---
 
@@ -169,19 +223,25 @@ Each entry in the `days` attribute list contains: `date`, `weekday`, `arrival`, 
 |---|---|
 | `switch.today_auto_departure` | Toggle auto-departure on/off from the dashboard |
 
+### Number
+
+| Entity | Range | Description |
+|---|---|---|
+| `number.today_arrival_margin` | 0–60 min | Minutes added to GPS-triggered arrival (e.g. `3` → arrival logged 3 min later than zone entry). `0` disables. Manual button presses are unaffected. |
+| `number.today_departure_margin` | 0–60 min | Minutes subtracted from GPS-triggered departure (e.g. `3` → departure logged 3 min earlier than zone exit). `0` disables. Manual button presses are unaffected. |
+
 ---
 
 ## Services
 
 | Service | Fields | Description |
 |---|---|---|
-| `worktime_tracker.log_arrival` | — | Register arrival right now |
-| `worktime_tracker.log_departure` | — | Register departure right now |
+| `worktime_tracker.log_arrival` | — | Register arrival right now (manual — ignores arrival margin) |
+| `worktime_tracker.log_departure` | — | Register departure right now (manual — ignores departure margin) |
 | `worktime_tracker.set_lunch` | `had_lunch: true/false` | Set lunch status |
 | `worktime_tracker.reset_today` | — | Clear today's data |
-| `worktime_tracker.export_history` | — | Send today's row to Google Sheets now |
-| `worktime_tracker.edit_day` | `date`, `type` (normal/sick), `arrival`, `departure`, `lunch`, `hours` — all optional | Edit any day. Set `type: sick` to log a sick day (default 8h). Sends updated row to Sheets marked as edited. |
-| `worktime_tracker.log_sick_day` | `date` (optional), `hours` (optional) | Log a sick day directly. Defaults to today and 8h. |
+| `worktime_tracker.export_today` | — | Send today's row to Google Sheets now |
+| `worktime_tracker.edit_day` | `date`, `type` (`normal` / `sick` / `off`), `arrival`, `departure`, `lunch`, `hours` — all optional | Edit any day. `type: sick` logs a sick day (default = net workday hours); `type: off` logs vacation (default 0h). Sends updated row to Sheets marked as edited. |
 
 ---
 

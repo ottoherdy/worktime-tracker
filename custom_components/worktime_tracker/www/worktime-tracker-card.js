@@ -1,7 +1,19 @@
 /**
  * Worktime Tracker Lovelace Card
  * Vanilla Web Component — no build step, no external dependencies.
- * Auto-registered via async_register_extra_module_url in __init__.py
+ * Auto-loaded via frontend.add_extra_js_url in __init__.py
+ *
+ * Config options (all optional, all default to true unless noted):
+ *   show_header: bool          - card title + status badge
+ *   show_times: bool           - arrival / planned / hours big row
+ *   show_progress: bool        - progress bar
+ *   show_lunch_status: bool    - lunch badge + remaining/overtime line
+ *   show_actions: bool         - log arrival/departure/lunch buttons
+ *   show_auto_departure: bool  - auto-departure toggle + reset
+ *   show_week: bool            - week summary line
+ *   show_recent: bool          - recent days table
+ *   show_edit: bool            - tap a row in recent days to edit
+ *   recent_days_limit: number  - rows in recent days table (default 7)
  */
 
 const ENTITY_TODAY = "sensor.today_hours_today";
@@ -49,12 +61,19 @@ function _progressPct(hours, target) {
   return Math.min(100, Math.round((parseFloat(hours) / parseFloat(target)) * 100));
 }
 
+function _timeForInput(val) {
+  // Recent_days arrival/departure are "HH:MM" or "—" — return "" for blank.
+  if (!val || val === "—") return "";
+  return val;
+}
+
 class WorktimeTrackerCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
     this._hass = null;
     this._intervalId = null;
+    this._editing = null; // {date, arrival, departure, lunch, type, hours} or null
   }
 
   set hass(hass) {
@@ -74,12 +93,16 @@ class WorktimeTrackerCard extends HTMLElement {
   }
 
   setConfig(config) {
-    // No required config — card is self-contained
     this._config = config || {};
   }
 
   getCardSize() {
     return 5;
+  }
+
+  _cfg(key, fallback = true) {
+    if (!this._config || !(key in this._config)) return fallback;
+    return this._config[key];
   }
 
   _callService(service, data = {}) {
@@ -91,9 +114,40 @@ class WorktimeTrackerCard extends HTMLElement {
     if (!this._hass) return;
     const swState = this._hass.states[ENTITY_SWITCH];
     if (!swState) return;
-    const domain = "switch";
     const svc = swState.state === "on" ? "turn_off" : "turn_on";
-    this._hass.callService(domain, svc, { entity_id: ENTITY_SWITCH });
+    this._hass.callService("switch", svc, { entity_id: ENTITY_SWITCH });
+  }
+
+  _openEdit(day) {
+    this._editing = {
+      date: day.date,
+      arrival: _timeForInput(day.arrival),
+      departure: _timeForInput(day.departure),
+      lunch: day.lunch && day.lunch !== "—" ? day.lunch : "",
+      type: day.type || "normal",
+      hours: day.hours != null ? String(day.hours) : "",
+    };
+    this._render();
+  }
+
+  _closeEdit() {
+    this._editing = null;
+    this._render();
+  }
+
+  _saveEdit() {
+    if (!this._editing) return;
+    const e = this._editing;
+    const payload = { date: e.date, type: e.type };
+    if (e.type === "normal") {
+      if (e.arrival) payload.arrival = e.arrival;
+      if (e.departure) payload.departure = e.departure;
+      if (e.lunch) payload.lunch = e.lunch;
+    } else if (e.hours !== "") {
+      payload.hours = parseFloat(e.hours);
+    }
+    this._callService("edit_day", payload);
+    this._closeEdit();
   }
 
   _render() {
@@ -142,22 +196,39 @@ class WorktimeTrackerCard extends HTMLElement {
       ? `<span class="badge lunch-no">🍽 Lunch: no</span>`
       : `<span class="badge lunch-unknown">🍽 Lunch: ?</span>`;
 
-    // Recent days table (last 7)
-    const recent = (attr.recent_days || []).slice(0, 7);
-    const recentRows = recent.map((d) => {
+    const limit = parseInt(this._cfg("recent_days_limit", 7), 10) || 7;
+    const recent = (attr.recent_days || []).slice(0, limit);
+    const editable = this._cfg("show_edit", true);
+    const recentRows = recent.map((d, i) => {
       const isSick = d.type === "sick";
+      const isOff = d.type === "off";
       const missingPunch = d.punch_out_missing;
-      const typeIcon = isSick ? " 🤒" : missingPunch ? " ⚠" : "";
+      const typeIcon = isSick ? " 🤒" : isOff ? " 🌴" : missingPunch ? " ⚠" : "";
+      const hoursCell = isSick ? "sick" : isOff ? "off" : (d.human_readable || "—");
       return `
-        <tr>
+        <tr data-row="${i}" class="${editable ? "clickable" : ""}">
           <td>${d.date || "—"}</td>
           <td>${d.weekday || "—"}</td>
-          <td style="text-align:right">${isSick ? "sick" : (d.human_readable || "—")}${typeIcon}</td>
+          <td style="text-align:right">${hoursCell}${typeIcon}</td>
         </tr>`;
     }).join("");
 
     // Departure display — show actual departure if done, else planned end
     const depDisplay = status === "done" ? departure : plannedEnd;
+
+    // Section visibility flags
+    const showHeader = this._cfg("show_header");
+    const showTimes = this._cfg("show_times");
+    const showProgress = this._cfg("show_progress");
+    const showLunchLine = this._cfg("show_lunch_status");
+    const showActions = this._cfg("show_actions");
+    const showAutoDep = this._cfg("show_auto_departure");
+    const showWeek = this._cfg("show_week");
+    const showRecent = this._cfg("show_recent");
+
+    // Modal (only rendered when editing)
+    const editing = this._editing;
+    const modalHtml = editing ? this._renderModal(editing) : "";
 
     const html = `
       <style>
@@ -304,110 +375,261 @@ class WorktimeTrackerCard extends HTMLElement {
         tbody tr:nth-child(even) td {
           background: var(--secondary-background-color, rgba(0,0,0,0.03));
         }
+        tbody tr.clickable { cursor: pointer; }
+        tbody tr.clickable:hover td {
+          background: var(--primary-color, #03a9f4);
+          color: #fff;
+        }
         .remaining-label {
           font-size: 0.8em;
           color: var(--secondary-text-color);
           margin-top: 2px;
         }
+
+        /* Edit modal */
+        .modal-backdrop {
+          position: fixed;
+          inset: 0;
+          background: rgba(0,0,0,0.55);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 999;
+        }
+        .modal {
+          background: var(--card-background-color, #fff);
+          color: var(--primary-text-color);
+          border-radius: var(--wt-radius);
+          padding: 20px;
+          width: min(420px, 92vw);
+          max-height: 90vh;
+          overflow-y: auto;
+          box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+        }
+        .modal h3 {
+          margin: 0 0 12px;
+          font-size: 1.1em;
+        }
+        .modal .field {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          margin-bottom: 12px;
+        }
+        .modal .field label {
+          font-size: 0.78em;
+          color: var(--secondary-text-color);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+        .modal input, .modal select {
+          padding: 8px;
+          font-size: 1em;
+          border: 1px solid var(--divider-color, #ccc);
+          border-radius: 6px;
+          background: var(--card-background-color, #fff);
+          color: var(--primary-text-color);
+        }
+        .modal .row-actions {
+          display: flex;
+          gap: 8px;
+          justify-content: flex-end;
+          margin-top: 8px;
+        }
+        .modal .row-actions button {
+          flex: 0 0 auto;
+          min-width: 90px;
+        }
       </style>
 
       <ha-card>
-        <div class="header">
-          <span class="title">Worktime Tracker</span>
-          <span class="badge status-badge">${statusLabel}</span>
-        </div>
+        ${showHeader ? `
+          <div class="header">
+            <span class="title">Worktime Tracker</span>
+            <span class="badge status-badge">${statusLabel}</span>
+          </div>` : ""}
 
-        <div class="time-row">
-          <div class="time-item">
-            <span class="time-label">Arrival</span>
-            <span class="time-value">${arrival}</span>
-          </div>
-          <div class="time-item">
-            <span class="time-label">${status === "done" ? "Departed" : "Planned end"}</span>
-            <span class="time-value">${depDisplay}</span>
-          </div>
-          <div class="time-item">
-            <span class="time-label">Hours worked</span>
-            <span class="hours-big">${_hoursHuman(hours)}</span>
-          </div>
-        </div>
+        ${showTimes ? `
+          <div class="time-row">
+            <div class="time-item">
+              <span class="time-label">Arrival</span>
+              <span class="time-value">${arrival}</span>
+            </div>
+            <div class="time-item">
+              <span class="time-label">${status === "done" ? "Departed" : "Planned end"}</span>
+              <span class="time-value">${depDisplay}</span>
+            </div>
+            <div class="time-item">
+              <span class="time-label">Hours worked</span>
+              <span class="hours-big">${_hoursHuman(hours)}</span>
+            </div>
+          </div>` : ""}
 
-        <div class="progress-wrap">
-          <div class="progress-fill"></div>
-        </div>
+        ${showProgress ? `
+          <div class="progress-wrap">
+            <div class="progress-fill"></div>
+          </div>` : ""}
 
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          ${lunchBadge}
-          <span class="remaining-label">
-            ${status === "off_duty"
-              ? "Not at work"
-              : status === "done"
-              ? `Overtime: ${_sign(overtime)}`
-              : `Remaining: ${timeRemaining}`}
-          </span>
-        </div>
+        ${showLunchLine ? `
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            ${lunchBadge}
+            <span class="remaining-label">
+              ${status === "off_duty"
+                ? "Not at work"
+                : status === "done"
+                ? `Overtime: ${_sign(overtime)}`
+                : `Remaining: ${timeRemaining}`}
+            </span>
+          </div>` : ""}
 
-        <div class="buttons">
-          <button id="btn-arrival" onclick="">✅ Log Arrival</button>
-          <button id="btn-departure" class="secondary" onclick="">🚪 Log Departure</button>
-          <button id="btn-lunch-yes" class="secondary" onclick="">🍽 Lunch ✓</button>
-          <button id="btn-lunch-no" class="danger" onclick="">🚫 No Lunch</button>
-        </div>
+        ${showActions ? `
+          <div class="buttons">
+            <button id="btn-arrival">✅ Log Arrival</button>
+            <button id="btn-departure" class="secondary">🚪 Log Departure</button>
+            <button id="btn-lunch-yes" class="secondary">🍽 Lunch ✓</button>
+            <button id="btn-lunch-no" class="danger">🚫 No Lunch</button>
+          </div>` : ""}
 
-        <div style="display:flex;gap:8px;margin-bottom:8px">
-          <button id="btn-switch" class="${swOn ? "on" : "secondary"}" style="flex:1">
-            ${swOn ? "🔔 Auto-depart: ON" : "🔕 Auto-depart: OFF"}
-          </button>
-          <button id="btn-reset" class="danger" style="flex:0 0 auto;min-width:60px">Reset</button>
-        </div>
+        ${showAutoDep ? `
+          <div style="display:flex;gap:8px;margin-bottom:8px">
+            <button id="btn-switch" class="${swOn ? "on" : "secondary"}" style="flex:1">
+              ${swOn ? "🔔 Auto-depart: ON" : "🔕 Auto-depart: OFF"}
+            </button>
+            <button id="btn-reset" class="danger" style="flex:0 0 auto;min-width:60px">Reset</button>
+          </div>` : ""}
 
-        <div class="divider"></div>
+        ${(showActions || showAutoDep) && (showWeek || showRecent) ? `<div class="divider"></div>` : ""}
 
-        <div class="week-row">
-          <span>This week: <b>${weekHours.toFixed(2)}h</b></span>
-          <span>Overtime: <b>${_sign(weekOvertime)}</b></span>
-          <span>Target: <b>${weekTarget}h</b></span>
-        </div>
+        ${showWeek ? `
+          <div class="week-row">
+            <span>This week: <b>${weekHours.toFixed(2)}h</b></span>
+            <span>Overtime: <b>${_sign(weekOvertime)}</b></span>
+            <span>Target: <b>${weekTarget}h</b></span>
+          </div>` : ""}
 
-        <div class="divider"></div>
+        ${showWeek && showRecent ? `<div class="divider"></div>` : ""}
 
-        <table>
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Day</th>
-              <th style="text-align:right">Hours</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${recentRows || '<tr><td colspan="3" style="text-align:center;color:var(--secondary-text-color)">No history yet</td></tr>'}
-          </tbody>
-        </table>
-      </ha-card>`;
+        ${showRecent ? `
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Day</th>
+                <th style="text-align:right">Hours</th>
+              </tr>
+            </thead>
+            <tbody id="recent-tbody">
+              ${recentRows || '<tr><td colspan="3" style="text-align:center;color:var(--secondary-text-color)">No history yet</td></tr>'}
+            </tbody>
+          </table>` : ""}
+      </ha-card>
+      ${modalHtml}`;
 
     this.shadowRoot.innerHTML = html;
+    this._wireEvents(recent, editable);
+  }
 
-    // Attach event listeners after render
-    this.shadowRoot.getElementById("btn-arrival")?.addEventListener("click", () => {
-      this._callService("log_arrival");
+  _renderModal(e) {
+    const isLeave = e.type === "sick" || e.type === "off";
+    return `
+      <div class="modal-backdrop" id="modal-backdrop">
+        <div class="modal" id="modal">
+          <h3>Edit ${e.date}</h3>
+
+          <div class="field">
+            <label for="ed-type">Type</label>
+            <select id="ed-type">
+              <option value="normal" ${e.type === "normal" ? "selected" : ""}>Normal</option>
+              <option value="sick" ${e.type === "sick" ? "selected" : ""}>Sick</option>
+              <option value="off" ${e.type === "off" ? "selected" : ""}>Off / vacation</option>
+            </select>
+          </div>
+
+          <div class="field" id="ed-field-arrival" style="${isLeave ? "display:none" : ""}">
+            <label for="ed-arrival">Arrival</label>
+            <input type="time" id="ed-arrival" value="${e.arrival}">
+          </div>
+
+          <div class="field" id="ed-field-departure" style="${isLeave ? "display:none" : ""}">
+            <label for="ed-departure">Departure</label>
+            <input type="time" id="ed-departure" value="${e.departure}">
+          </div>
+
+          <div class="field" id="ed-field-lunch" style="${isLeave ? "display:none" : ""}">
+            <label for="ed-lunch">Lunch</label>
+            <select id="ed-lunch">
+              <option value="" ${!e.lunch ? "selected" : ""}>— (keep current)</option>
+              <option value="yes" ${e.lunch === "yes" ? "selected" : ""}>Yes</option>
+              <option value="no" ${e.lunch === "no" ? "selected" : ""}>No</option>
+            </select>
+          </div>
+
+          <div class="field" id="ed-field-hours" style="${isLeave ? "" : "display:none"}">
+            <label for="ed-hours">Hours (leave blank for default)</label>
+            <input type="number" id="ed-hours" min="0" max="24" step="0.5" value="${e.hours}">
+          </div>
+
+          <div class="row-actions">
+            <button id="ed-cancel" class="secondary">Cancel</button>
+            <button id="ed-save">Save</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  _wireEvents(recent, editable) {
+    const $ = (id) => this.shadowRoot.getElementById(id);
+
+    $("btn-arrival")?.addEventListener("click", () => this._callService("log_arrival"));
+    $("btn-departure")?.addEventListener("click", () => this._callService("log_departure"));
+    $("btn-lunch-yes")?.addEventListener("click", () => this._callService("set_lunch", { had_lunch: true }));
+    $("btn-lunch-no")?.addEventListener("click", () => this._callService("set_lunch", { had_lunch: false }));
+    $("btn-switch")?.addEventListener("click", () => this._toggleSwitch());
+    $("btn-reset")?.addEventListener("click", () => {
+      if (confirm("Reset today's tracking?")) this._callService("reset_today");
     });
-    this.shadowRoot.getElementById("btn-departure")?.addEventListener("click", () => {
-      this._callService("log_departure");
-    });
-    this.shadowRoot.getElementById("btn-lunch-yes")?.addEventListener("click", () => {
-      this._callService("set_lunch", { had_lunch: true });
-    });
-    this.shadowRoot.getElementById("btn-lunch-no")?.addEventListener("click", () => {
-      this._callService("set_lunch", { had_lunch: false });
-    });
-    this.shadowRoot.getElementById("btn-switch")?.addEventListener("click", () => {
-      this._toggleSwitch();
-    });
-    this.shadowRoot.getElementById("btn-reset")?.addEventListener("click", () => {
-      if (confirm("Reset today's tracking?")) {
-        this._callService("reset_today");
-      }
-    });
+
+    if (editable) {
+      this.shadowRoot.querySelectorAll("tr[data-row]").forEach((row) => {
+        row.addEventListener("click", () => {
+          const idx = parseInt(row.getAttribute("data-row"), 10);
+          const day = recent[idx];
+          if (day) this._openEdit(day);
+        });
+      });
+    }
+
+    // Modal wiring
+    if (this._editing) {
+      $("ed-cancel")?.addEventListener("click", () => this._closeEdit());
+      $("modal-backdrop")?.addEventListener("click", (ev) => {
+        if (ev.target.id === "modal-backdrop") this._closeEdit();
+      });
+      $("ed-save")?.addEventListener("click", () => {
+        const e = this._editing;
+        e.type = $("ed-type").value;
+        e.arrival = $("ed-arrival")?.value || "";
+        e.departure = $("ed-departure")?.value || "";
+        e.lunch = $("ed-lunch")?.value || "";
+        e.hours = $("ed-hours")?.value || "";
+        this._saveEdit();
+      });
+      $("ed-type")?.addEventListener("change", (ev) => {
+        const isLeave = ev.target.value !== "normal";
+        $("ed-field-arrival").style.display = isLeave ? "none" : "";
+        $("ed-field-departure").style.display = isLeave ? "none" : "";
+        $("ed-field-lunch").style.display = isLeave ? "none" : "";
+        $("ed-field-hours").style.display = isLeave ? "" : "none";
+      });
+    }
+  }
+
+  static getStubConfig() {
+    return {};
+  }
+
+  static getConfigElement() {
+    return null;
   }
 }
 

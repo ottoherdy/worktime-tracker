@@ -5,10 +5,11 @@ import logging
 import os
 import voluptuous as vol
 
+from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -27,7 +28,7 @@ from .coordinator import WorktimeCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[str] = ["sensor", "binary_sensor", "switch"]
+PLATFORMS: list[str] = ["sensor", "binary_sensor", "switch", "number"]
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
@@ -37,7 +38,7 @@ _CARD_FILENAME = "worktime-tracker-card.js"
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
-    """Register static www path so the Lovelace card JS is served."""
+    """Register static www path and auto-load the Lovelace card."""
     await hass.http.async_register_static_paths([
         StaticPathConfig(
             f"/{DOMAIN}_www",
@@ -45,6 +46,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             cache_headers=False,
         )
     ])
+    add_extra_js_url(hass, f"/{DOMAIN}_www/{_CARD_FILENAME}")
     return True
 
 
@@ -55,6 +57,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Store coordinator on entry.runtime_data (HA 2024.x+)
     entry.runtime_data = coordinator
+
+    # Prune stale devices from older versions that registered multiple devices.
+    # The only valid device has identifiers {(DOMAIN, entry.entry_id)}.
+    reg = dr.async_get(hass)
+    valid_id = (DOMAIN, entry.entry_id)
+    for device in dr.async_entries_for_config_entry(reg, entry.entry_id):
+        if not any(ident[0] == DOMAIN for ident in device.identifiers):
+            continue
+        if valid_id in device.identifiers:
+            continue
+        _LOGGER.info("Worktime: removing stale device %s (%s)", device.name, device.id)
+        reg.async_remove_device(device.id)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
