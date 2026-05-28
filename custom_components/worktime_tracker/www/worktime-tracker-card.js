@@ -1,5 +1,5 @@
 /**
- * Worktime Tracker Lovelace Card — v2.7.1
+ * Worktime Tracker Lovelace Card — v2.7.2
  * Vanilla Web Component, no build step. Auto-loaded via add_extra_js_url.
  *
  * Every option below has a control in the visual editor. The README
@@ -196,11 +196,11 @@ function _fmtDateInline(iso, format) {
   return iso;
 }
 
-function _fmtDeltaHours(diff) {
-  if (diff == null || isNaN(parseFloat(diff))) return "0.00h";
+function _fmtDelta(diff, format) {
+  if (diff == null || isNaN(parseFloat(diff))) return "0";
   const d = parseFloat(diff);
   const sign = d >= 0 ? "+" : "−";
-  return `${sign}${Math.abs(d).toFixed(2)}h`;
+  return `${sign}${_fmtHours(Math.abs(d), format)}`;
 }
 
 function _isoToMMDD(iso) {
@@ -505,11 +505,13 @@ class WorktimeTrackerCard extends HTMLElement {
     const weekDays = weekAttr.days || [];
     const weekFilled = weekDays.filter((d) => d && d.type !== "none" && parseFloat(d.hours) > 0);
     const weekAvgH = weekFilled.length ? weekHours / weekFilled.length : 0;
+    const weekOvertime = parseFloat(weekAttr.overtime) || 0;
 
     const lastWeekHours = lastWeekState ? parseFloat(lastWeekState.state) || 0 : 0;
     const lastWeekDays = lastWeekAttr.days || [];
     const lastWeekFilled = lastWeekDays.filter((d) => d && d.type !== "none" && parseFloat(d.hours) > 0);
     const lastWeekAvgH = lastWeekFilled.length ? lastWeekHours / lastWeekFilled.length : 0;
+    const lastWeekOvertime = parseFloat(lastWeekAttr.overtime) || 0;
 
     const monthHours = monthState ? parseFloat(monthState.state) || 0 : 0;
     const monthOvertime = parseFloat(monthAttr.overtime) || 0;
@@ -655,6 +657,8 @@ class WorktimeTrackerCard extends HTMLElement {
               <div class="section-head">
                 <div class="section-title">${this._cfg("title_this_week")}</div>
                 <div class="section-total">
+                  <span class="ot mono ${weekOvertime >= 0 ? "pos" : "neg"}">${_fmtDelta(weekOvertime, timeFmt)}</span>
+                  <span class="sep-dot"></span>
                   ${weekFilled.length} ${weekFilled.length === 1 ? "day" : "days"} · avg <b class="mono">${_fmtHours(weekAvgH, timeFmt)}</b>
                 </div>
               </div>
@@ -666,6 +670,8 @@ class WorktimeTrackerCard extends HTMLElement {
               <div class="section-head">
                 <div class="section-title">${this._cfg("title_last_week")}</div>
                 <div class="section-total">
+                  <span class="ot mono ${lastWeekOvertime >= 0 ? "pos" : "neg"}">${_fmtDelta(lastWeekOvertime, timeFmt)}</span>
+                  <span class="sep-dot"></span>
                   ${lastWeekFilled.length} ${lastWeekFilled.length === 1 ? "day" : "days"} · avg <b class="mono">${_fmtHours(lastWeekAvgH, timeFmt)}</b>
                 </div>
               </div>
@@ -760,7 +766,7 @@ class WorktimeTrackerCard extends HTMLElement {
           </div>
           <div class="month-row">
             <span class="month-k">Overtime</span>
-            <span class="month-v mono ${overtime >= 0 ? "pos" : "neg"}">${_fmtDeltaHours(overtime)}</span>
+            <span class="month-v mono ${overtime >= 0 ? "pos" : "neg"}">${_fmtDelta(overtime, timeFmt)}</span>
           </div>
         </div>
       </section>`;
@@ -1235,10 +1241,20 @@ class WorktimeTrackerCard extends HTMLElement {
       }
       .section-total {
         font-size: 12px; color: var(--wt-muted);
+        display: inline-flex; align-items: center; gap: 6px;
       }
       .section-total b {
         color: var(--wt-ink); font-weight: 500;
         font-family: 'Geist Mono', monospace; font-feature-settings: 'tnum';
+      }
+      .section-total .ot {
+        font-weight: 600; font-feature-settings: 'tnum';
+      }
+      .section-total .ot.pos { color: var(--wt-good); }
+      .section-total .ot.neg { color: var(--wt-warn); }
+      .section-total .sep-dot {
+        width: 3px; height: 3px; border-radius: 50%;
+        background: var(--wt-muted-2); flex-shrink: 0;
       }
 
       .list {
