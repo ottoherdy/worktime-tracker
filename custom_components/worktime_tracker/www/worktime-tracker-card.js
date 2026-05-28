@@ -1,5 +1,5 @@
 /**
- * Worktime Tracker Lovelace Card — v2.7.0
+ * Worktime Tracker Lovelace Card — v2.7.1
  * Vanilla Web Component, no build step. Auto-loaded via add_extra_js_url.
  *
  * Every option below has a control in the visual editor. The README
@@ -1809,8 +1809,12 @@ class WorktimeTrackerCardEditor extends HTMLElement {
   }
 }
 
-customElements.define("worktime-tracker-card-editor", WorktimeTrackerCardEditor);
-customElements.define("worktime-tracker-card", WorktimeTrackerCard);
+if (!customElements.get("worktime-tracker-card-editor")) {
+  customElements.define("worktime-tracker-card-editor", WorktimeTrackerCardEditor);
+}
+if (!customElements.get("worktime-tracker-card")) {
+  customElements.define("worktime-tracker-card", WorktimeTrackerCard);
+}
 
 window.customCards = window.customCards || [];
 window.customCards.push({

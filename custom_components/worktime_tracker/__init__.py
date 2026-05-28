@@ -1,6 +1,7 @@
 """Worktime Tracker custom integration."""
 from __future__ import annotations
 
+import json
 import logging
 import os
 import voluptuous as vol
@@ -37,6 +38,15 @@ _WWW_DIR = os.path.join(os.path.dirname(__file__), "www")
 _CARD_FILENAME = "worktime-tracker-card.js"
 
 
+def _integration_version() -> str:
+    """Read the version from manifest.json (best effort)."""
+    try:
+        with open(os.path.join(os.path.dirname(__file__), "manifest.json")) as f:
+            return str(json.load(f).get("version", "0"))
+    except Exception:  # noqa: BLE001 — never block setup over a version string
+        return "0"
+
+
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Register static www path and auto-load the Lovelace card."""
     await hass.http.async_register_static_paths([
@@ -46,7 +56,13 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             cache_headers=False,
         )
     ])
-    add_extra_js_url(hass, f"/{DOMAIN}_www/{_CARD_FILENAME}")
+    # Append the version as a cache-busting query param. The HA frontend
+    # service worker and the browser cache the card JS aggressively keyed
+    # by URL, so without this a HACS update keeps serving the old file and
+    # the dashboard shows "Custom element doesn't exist" until a manual
+    # cache clear. Changing the URL on every release forces a fresh fetch.
+    version = await hass.async_add_executor_job(_integration_version)
+    add_extra_js_url(hass, f"/{DOMAIN}_www/{_CARD_FILENAME}?v={version}")
     return True
 
 
