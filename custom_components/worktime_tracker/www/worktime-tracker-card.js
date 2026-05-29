@@ -1,5 +1,5 @@
 /**
- * Worktime Tracker Lovelace Card — v2.7.2
+ * Worktime Tracker Lovelace Card — v2.7.3
  * Vanilla Web Component, no build step. Auto-loaded via add_extra_js_url.
  *
  * Every option below has a control in the visual editor. The README
@@ -657,6 +657,8 @@ class WorktimeTrackerCard extends HTMLElement {
               <div class="section-head">
                 <div class="section-title">${this._cfg("title_this_week")}</div>
                 <div class="section-total">
+                  <span class="tot mono">${_fmtHours(weekHours, timeFmt)}</span>
+                  <span class="sep-dot"></span>
                   <span class="ot mono ${weekOvertime >= 0 ? "pos" : "neg"}">${_fmtDelta(weekOvertime, timeFmt)}</span>
                   <span class="sep-dot"></span>
                   ${weekFilled.length} ${weekFilled.length === 1 ? "day" : "days"} · avg <b class="mono">${_fmtHours(weekAvgH, timeFmt)}</b>
@@ -670,6 +672,8 @@ class WorktimeTrackerCard extends HTMLElement {
               <div class="section-head">
                 <div class="section-title">${this._cfg("title_last_week")}</div>
                 <div class="section-total">
+                  <span class="tot mono">${_fmtHours(lastWeekHours, timeFmt)}</span>
+                  <span class="sep-dot"></span>
                   <span class="ot mono ${lastWeekOvertime >= 0 ? "pos" : "neg"}">${_fmtDelta(lastWeekOvertime, timeFmt)}</span>
                   <span class="sep-dot"></span>
                   ${lastWeekFilled.length} ${lastWeekFilled.length === 1 ? "day" : "days"} · avg <b class="mono">${_fmtHours(lastWeekAvgH, timeFmt)}</b>
@@ -1242,10 +1246,16 @@ class WorktimeTrackerCard extends HTMLElement {
       .section-total {
         font-size: 12px; color: var(--wt-muted);
         display: inline-flex; align-items: center; gap: 6px;
+        flex-wrap: wrap; justify-content: flex-end;
       }
       .section-total b {
         color: var(--wt-ink); font-weight: 500;
         font-family: 'Geist Mono', monospace; font-feature-settings: 'tnum';
+      }
+      .section-total .tot {
+        color: var(--wt-ink); font-weight: 600;
+        font-feature-settings: 'tnum';
+        font-size: 13px;
       }
       .section-total .ot {
         font-weight: 600; font-feature-settings: 'tnum';
