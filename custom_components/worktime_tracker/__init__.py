@@ -20,6 +20,7 @@ from .const import (
     SERVICE_LOG_DEPARTURE,
     SERVICE_RESET_TODAY,
     SERVICE_EXPORT_TODAY,
+    SERVICE_EXPORT_ALL,
     SERVICE_EDIT_DAY,
     LUNCH_YES,
     LUNCH_NO,
@@ -117,6 +118,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 SERVICE_LOG_DEPARTURE,
                 SERVICE_RESET_TODAY,
                 SERVICE_EXPORT_TODAY,
+                SERVICE_EXPORT_ALL,
                 SERVICE_EDIT_DAY,
             ):
                 if hass.services.has_service(DOMAIN, service):
@@ -178,6 +180,14 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         for coord in _get_coordinators(hass, _prefix(call)):
             await coord.async_export_today()
 
+    async def handle_export_all(call: ServiceCall) -> None:
+        from datetime import date as date_type
+        raw_since = call.data.get("since") or None
+        since = date_type.fromisoformat(raw_since) if raw_since else None
+        force = bool(call.data.get("force", False))
+        for coord in _get_coordinators(hass, _prefix(call)):
+            await coord.async_export_all(since=since, force=force)
+
     async def handle_edit_day(call: ServiceCall) -> None:
         from datetime import date as date_type
         raw_date = call.data.get("date") or None
@@ -189,8 +199,32 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         departure = call.data.get("departure") or None
         lunch = call.data.get("lunch") or None
 
-        for coord in _get_coordinators(hass, _prefix(call)):
-            if day_type in ("sick", "off"):
+        prefix = _prefix(call)
+        coords = _get_coordinators(hass, prefix)
+        if not coords:
+            _LOGGER.warning(
+                "Worktime: edit_day for %s (prefix=%r) matched no instance — "
+                "check the card's entity_prefix matches the config entry's "
+                "instance_name slug. Active slugs: %s",
+                target, prefix,
+                [
+                    "".join(
+                        c if c.isalnum() else "_"
+                        for c in (e.data.get("instance_name") or e.title or "").lower()
+                    )
+                    for e in hass.config_entries.async_entries(DOMAIN)
+                    if hasattr(e, "runtime_data")
+                ],
+            )
+            return
+        _LOGGER.info(
+            "Worktime: edit_day prefix=%r target=%s type=%s hours=%s "
+            "arrival=%s departure=%s lunch=%s → %d coordinator(s)",
+            prefix, target, day_type, hours, arrival, departure, lunch, len(coords),
+        )
+
+        for coord in coords:
+            if day_type in ("sick", "off", "flex"):
                 await coord.async_edit_day(
                     target_date=target,
                     day_type=day_type,
@@ -219,6 +253,15 @@ async def _async_register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(DOMAIN, SERVICE_LOG_DEPARTURE, handle_log_departure, schema=no_arg_schema)
     hass.services.async_register(DOMAIN, SERVICE_RESET_TODAY, handle_reset_today, schema=no_arg_schema)
     hass.services.async_register(DOMAIN, SERVICE_EXPORT_TODAY, handle_export_today, schema=no_arg_schema)
+
+    export_all_schema = vol.Schema({
+        vol.Optional("since"): vol.Any(None, cv.string),
+        vol.Optional("force", default=False): cv.boolean,
+        vol.Optional("entry_prefix"): cv.string,
+    })
+    hass.services.async_register(
+        DOMAIN, SERVICE_EXPORT_ALL, handle_export_all, schema=export_all_schema
+    )
 
     edit_day_schema = vol.Schema({
         vol.Optional("date"): vol.Any(None, cv.string),

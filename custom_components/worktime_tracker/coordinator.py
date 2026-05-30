@@ -1,6 +1,8 @@
 """Coordinator – contains all the business logic for Worktime Tracker."""
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import math
 from datetime import date, datetime, time, timedelta
@@ -136,6 +138,12 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         # Persisted data
         self.history: list[dict[str, Any]] = []          # completed normal work days
         self.leave_records: list[dict[str, Any]] = []    # sick / leave days
+
+        # Per-date Sheets sync state: {iso_date: {"rev": int, "fp": str, "ts": iso}}.
+        # Tracks what we last pushed so export_all can skip unchanged days and
+        # bump Rev when something has changed. Sheets export is fully optional —
+        # this dict stays empty until the user actually uses it.
+        self.sheets_sync: dict[str, dict[str, Any]] = {}
 
     # ------------------------------------------------------------------
     # Properties
@@ -411,7 +419,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         elif action == ACTION_LUNCH_NO:
             await self.async_set_lunch(LUNCH_NO)
         elif action == ACTION_TIMEREPORT_YES:
-            await self._async_append_to_sheet()
+            await self._async_append_to_sheet(source="notification")
 
     # ------------------------------------------------------------------
     # Public actions
@@ -499,7 +507,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         if self.arrival is None:
             _LOGGER.info("Worktime: nothing to export for today")
             return
-        await self._async_append_to_sheet()
+        await self._async_append_to_sheet(source="manual")
 
     async def async_edit_day(
         self,
@@ -555,7 +563,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             await self._async_save()
             self.async_set_updated_data(self.snapshot())
             _LOGGER.info("Worktime: %s day set for %s (%.2fh)", day_type, target_iso, leave_hours)
-            await self._async_append_to_sheet(entry=leave_entry)
+            await self._async_append_to_sheet(entry=leave_entry, source="edit")
             return
 
         # Normal day edit
@@ -611,7 +619,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
 
         self.async_set_updated_data(self.snapshot())
         _LOGGER.info("Worktime: edited day %s → %s", target_iso, entry)
-        await self._async_append_to_sheet(entry=entry)
+        await self._async_append_to_sheet(entry=entry, source="edit")
 
     async def async_set_auto_departure_enabled(self, enabled: bool) -> None:
         self._auto_departure_enabled = enabled
@@ -1075,6 +1083,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
 
         self.history = raw.get("history", [])
         self.leave_records = raw.get("leave_records", [])
+        self.sheets_sync = raw.get("sheets_sync", {}) or {}
 
         if len(self.history) > 180:
             self.history = self.history[-180:]
@@ -1175,6 +1184,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             "today": today_blob,
             "history": self.history,
             "leave_records": self.leave_records,
+            "sheets_sync": self.sheets_sync,
         })
 
     # ------------------------------------------------------------------
@@ -1185,19 +1195,16 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             return ""
         return dt_util.as_local(dt_obj).strftime("%H:%M")
 
-    async def _async_append_to_sheet(
+    def _build_sheet_row(
         self,
-        entry: dict[str, Any] | None = None,
-    ) -> None:
-        entry_id = self.sheets_entry_id
-        if not entry_id:
-            return
-        if not self.hass.services.has_service("google_sheets", "append_sheet"):
-            _LOGGER.warning("Worktime: google_sheets not installed — skipping export")
-            return
+        entry: dict[str, Any] | None,
+    ) -> tuple[dict[str, Any], str, str] | None:
+        """Build a Sheets row dict + its content fingerprint + ISO date.
 
+        Returns None if the entry can't be parsed. The fingerprint covers
+        the user-visible fields so re-exports skip unchanged days.
+        """
         if entry is None:
-            # Export today's live state
             target_date = self._today_date or dt_util.now().date()
             arrival = self.arrival
             departure = self._departure
@@ -1219,7 +1226,6 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                 day_type = entry.get("type", DAY_TYPE_NORMAL)
                 edited = bool(entry.get("edited", False))
                 punch_out_missing = bool(entry.get("punch_out_missing", False))
-                # Reconstruct planned_end for historical row
                 if arrival:
                     hrs = self.workday_hours
                     if entry.get("lunch") == LUNCH_NO:
@@ -1229,12 +1235,13 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                     planned = None
             except Exception as exc:  # pylint: disable=broad-except
                 _LOGGER.warning("Worktime: failed to parse entry for Sheets: %s", exc)
-                return
+                return None
 
         overtime = round(hours - self.daily_net_target, 2)
+        iso = target_date.isoformat()
 
         row = {
-            "Date": target_date.isoformat(),
+            "Date": iso,
             "Weekday": _WEEKDAYS[target_date.weekday()],
             "Type": (
                 "Sick" if day_type == DAY_TYPE_SICK
@@ -1246,11 +1253,57 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             "Planned end": self._format_time(planned),
             "Departure": self._format_time(departure),
             "Lunch": lunch,
-            "Hours": hours,
+            "Hours": round(hours, 4),
             "Hours (rounded)": f"{_round_quarter(hours):.2f}h",
             "Overtime": overtime,
             "Edited": "yes" if edited else "no",
             "Punch-out missing": "yes" if punch_out_missing else "no",
+        }
+
+        fp_payload = {
+            "type": row["Type"],
+            "arrival": row["Arrival"],
+            "departure": row["Departure"],
+            "lunch": row["Lunch"],
+            "hours": row["Hours"],
+            "edited": row["Edited"],
+            "punch_out_missing": row["Punch-out missing"],
+        }
+        fp = hashlib.sha256(
+            json.dumps(fp_payload, sort_keys=True).encode("utf-8")
+        ).hexdigest()[:16]
+        return row, fp, iso
+
+    async def _async_send_row(
+        self,
+        row: dict[str, Any],
+        iso: str,
+        fp: str,
+        source: str,
+    ) -> bool:
+        """Send a single prepared row, stamping Rev/Source/Updated at and
+        updating sheets_sync. Returns True on success.
+
+        Sheets integration is fully optional: if it isn't configured or
+        installed we no-op silently."""
+        entry_id = self.sheets_entry_id
+        if not entry_id:
+            return False
+        if not self.hass.services.has_service("google_sheets", "append_sheet"):
+            _LOGGER.warning("Worktime: google_sheets not installed — skipping export")
+            return False
+
+        prev = self.sheets_sync.get(iso, {})
+        prev_rev = int(prev.get("rev", 0) or 0)
+        prev_fp = prev.get("fp")
+        rev = prev_rev + 1 if prev_fp is not None and prev_fp != fp else (prev_rev or 1)
+        now_iso = dt_util.now().replace(microsecond=0).isoformat()
+
+        row = {
+            **row,
+            "Rev": rev,
+            "Source": source,
+            "Updated at": now_iso,
         }
 
         try:
@@ -1264,9 +1317,88 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                 },
                 blocking=True,
             )
-            _LOGGER.info("Worktime: appended to Sheets worksheet '%s'", self.sheets_worksheet)
         except Exception as exc:  # pylint: disable=broad-except
-            _LOGGER.warning("Worktime: Sheets append failed: %s", exc)
+            _LOGGER.warning("Worktime: Sheets append failed for %s: %s", iso, exc)
+            return False
+
+        self.sheets_sync[iso] = {"rev": rev, "fp": fp, "ts": now_iso}
+        return True
+
+    async def _async_append_to_sheet(
+        self,
+        entry: dict[str, Any] | None = None,
+        source: str = "auto",
+    ) -> None:
+        """Append (or re-append) one day. Default source is 'auto' for
+        the punch-out / edit flow; callers can override (e.g. 'today' for
+        a manual export-today click)."""
+        if not self.sheets_entry_id:
+            return
+        built = self._build_sheet_row(entry)
+        if built is None:
+            return
+        row, fp, iso = built
+        sent = await self._async_send_row(row, iso, fp, source)
+        if sent:
+            await self._async_save()
+            _LOGGER.info("Worktime: appended %s (rev %d) to '%s'",
+                         iso, self.sheets_sync[iso]["rev"], self.sheets_worksheet)
+
+    async def async_export_all(
+        self,
+        since: date | None = None,
+        force: bool = False,
+    ) -> dict[str, int]:
+        """Walk every locally-known day and push anything not yet in Sheets
+        (or anything that has changed since last push). Returns a small
+        summary dict. Sheets is optional — if it isn't configured this is
+        a no-op."""
+        if not self.sheets_entry_id:
+            _LOGGER.info("Worktime: export_all — Sheets not configured, skipping")
+            return {"sent": 0, "skipped": 0, "failed": 0, "total": 0}
+        if not self.hass.services.has_service("google_sheets", "append_sheet"):
+            _LOGGER.warning("Worktime: export_all — google_sheets not installed")
+            return {"sent": 0, "skipped": 0, "failed": 0, "total": 0}
+
+        # Combine all known days. History and leave_records are mutually
+        # exclusive by date (see async_edit_day), but be defensive anyway.
+        seen: set[str] = set()
+        combined: list[dict[str, Any]] = []
+        for e in self.history + self.leave_records:
+            iso = e.get("date")
+            if not iso or iso in seen:
+                continue
+            if since and iso < since.isoformat():
+                continue
+            seen.add(iso)
+            combined.append(e)
+        combined.sort(key=lambda e: e.get("date", ""))
+
+        sent = skipped = failed = 0
+        for e in combined:
+            built = self._build_sheet_row(e)
+            if built is None:
+                failed += 1
+                continue
+            row, fp, iso = built
+            prev_fp = self.sheets_sync.get(iso, {}).get("fp")
+            if not force and prev_fp == fp:
+                skipped += 1
+                continue
+            source = "export_all_force" if force else "export_all"
+            ok = await self._async_send_row(row, iso, fp, source)
+            if ok:
+                sent += 1
+            else:
+                failed += 1
+
+        if sent:
+            await self._async_save()
+        _LOGGER.info(
+            "Worktime: export_all done — sent=%d skipped=%d failed=%d total=%d",
+            sent, skipped, failed, len(combined),
+        )
+        return {"sent": sent, "skipped": skipped, "failed": failed, "total": len(combined)}
 
     async def _async_send_lunch_notification(self) -> None:
         svc = self.notify_service

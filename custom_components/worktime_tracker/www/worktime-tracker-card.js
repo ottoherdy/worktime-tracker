@@ -1,5 +1,5 @@
 /**
- * Worktime Tracker Lovelace Card — v2.7.3
+ * Worktime Tracker Lovelace Card — v2.8.2
  * Vanilla Web Component, no build step. Auto-loaded via add_extra_js_url.
  *
  * Every option below has a control in the visual editor. The README
@@ -94,6 +94,7 @@ const DEFAULTS = {
   show_btn_departure: true,
   show_btn_lunch: true,
   show_btn_auto: true,
+  show_btn_export_all: false,
 };
 
 const COLOR_PRESETS = {
@@ -707,6 +708,7 @@ class WorktimeTrackerCard extends HTMLElement {
               <span class="foot-links">
                 <a href="#" id="link-export">Export</a>
                 <a href="#" id="link-sheets">Sheets</a>
+                ${this._cfg("show_btn_export_all") ? `<a href="#" id="link-export-all">Export all</a>` : ""}
               </span>
             </footer>` : ""}
         </div>
@@ -836,8 +838,10 @@ class WorktimeTrackerCard extends HTMLElement {
     const date = this._lookupDate || _todayIso();
     const match = (pool || []).find((d) => d.date === date);
     const editable = !!this._cfg("show_edit");
-    const editBtn = (match && editable)
-      ? `<button class="btn ghost" id="lookup-edit">${ICON.pencil} Edit</button>`
+    const editBtn = editable
+      ? (match
+          ? `<button class="btn ghost" id="lookup-edit">${ICON.pencil} Edit</button>`
+          : `<button class="btn ghost" id="lookup-edit">${ICON.pencil} Add</button>`)
       : "";
 
     let body;
@@ -958,6 +962,12 @@ class WorktimeTrackerCard extends HTMLElement {
     $("btn-auto")?.addEventListener("click", () => this._toggleSwitch());
     $("link-export")?.addEventListener("click", (ev) => { ev.preventDefault(); this._callService("export_today"); });
     $("link-sheets")?.addEventListener("click", (ev) => { ev.preventDefault(); this._callService("export_today"); });
+    $("link-export-all")?.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      if (confirm("Export every locally-known day to Sheets? Only days that are missing or changed since the last push will be sent.")) {
+        this._callService("export_all");
+      }
+    });
 
     $("lookup-date")?.addEventListener("change", (ev) => {
       this._lookupDate = ev.target.value || _todayIso();
@@ -966,8 +976,24 @@ class WorktimeTrackerCard extends HTMLElement {
     });
     $("lookup-edit")?.addEventListener("click", () => {
       const pool = this._dayTables?.lookup || [];
-      const match = pool.find((d) => d.date === this._lookupDate);
-      if (match) this._openEdit(match);
+      const date = this._lookupDate || _todayIso();
+      const match = pool.find((d) => d.date === date);
+      if (match) {
+        this._openEdit(match);
+      } else {
+        // Seed a blank day for the picked date so the modal opens cleanly.
+        // This is the path you take to fill in an instance that has no
+        // history yet (e.g. a newly added second instance).
+        this._openEdit({
+          date,
+          weekday: _weekdayShort(date),
+          arrival: "",
+          departure: "",
+          lunch: "",
+          type: "normal",
+          hours: null,
+        });
+      }
     });
 
     const editable = !!this._cfg("show_edit");
@@ -1469,10 +1495,23 @@ class WorktimeTrackerCardEditor extends HTMLElement {
     this._config = {};
   }
 
-  setConfig(config) { this._config = { ...config }; this._render(); }
+  setConfig(config) {
+    const incoming = JSON.stringify(config || {});
+    // HA echoes the config back via setConfig after every config-changed
+    // event we emit. If it's the same object we just sent, skip the
+    // re-render — otherwise text inputs lose focus on every keystroke.
+    if (incoming === this._lastEmitted) {
+      this._config = { ...config };
+      this._lastEmitted = null;
+      return;
+    }
+    this._config = { ...config };
+    this._render();
+  }
   set hass(hass) { this._hass = hass; }
 
   _emit() {
+    this._lastEmitted = JSON.stringify(this._config);
     this.dispatchEvent(new CustomEvent("config-changed", {
       detail: { config: this._config }, bubbles: true, composed: true,
     }));
@@ -1540,6 +1579,7 @@ class WorktimeTrackerCardEditor extends HTMLElement {
       ["show_btn_departure", "Departure"],
       ["show_btn_lunch", "Lunch toggle"],
       ["show_btn_auto", "Auto-out toggle"],
+      ["show_btn_export_all", "Export all (footer link)"],
     ].map(([k, label]) => `
       <label class="row">
         <input type="checkbox" data-key="${k}" ${this._get(k) ? "checked" : ""}>

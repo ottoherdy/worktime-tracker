@@ -27,6 +27,38 @@ export_today:
   name: Export today to Sheets
   description: Re-send today's row to the configured Google Sheets worksheet.
 
+export_all:
+  name: Export all to Sheets
+  description: >
+    Walk every locally-known day and append any rows that are missing
+    from Sheets, or that have changed since they were last pushed.
+    Changed rows are appended with the next Rev number so you can see
+    which version is the current one. Optional — requires the Google
+    Sheets integration to be configured for this entry.
+  fields:
+    since:
+      name: Since
+      description: Only export days on or after this date (YYYY-MM-DD). Leave empty for all.
+      required: false
+      selector:
+        text:
+    force:
+      name: Force re-export
+      description: >
+        Re-send every day even if its fingerprint matches the last push.
+        Useful if you cleared the Sheets tab manually and want everything
+        back.
+      required: false
+      default: false
+      selector:
+        boolean:
+    entry_prefix:
+      name: Entry prefix
+      description: For multi-instance setups — restrict to this instance.
+      required: false
+      selector:
+        text:
+
 edit_day:
   name: Edit day
   description: >
