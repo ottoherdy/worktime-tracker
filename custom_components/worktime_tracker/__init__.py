@@ -199,8 +199,32 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         departure = call.data.get("departure") or None
         lunch = call.data.get("lunch") or None
 
-        for coord in _get_coordinators(hass, _prefix(call)):
-            if day_type in ("sick", "off"):
+        prefix = _prefix(call)
+        coords = _get_coordinators(hass, prefix)
+        if not coords:
+            _LOGGER.warning(
+                "Worktime: edit_day for %s (prefix=%r) matched no instance — "
+                "check the card's entity_prefix matches the config entry's "
+                "instance_name slug. Active slugs: %s",
+                target, prefix,
+                [
+                    "".join(
+                        c if c.isalnum() else "_"
+                        for c in (e.data.get("instance_name") or e.title or "").lower()
+                    )
+                    for e in hass.config_entries.async_entries(DOMAIN)
+                    if hasattr(e, "runtime_data")
+                ],
+            )
+            return
+        _LOGGER.info(
+            "Worktime: edit_day prefix=%r target=%s type=%s hours=%s "
+            "arrival=%s departure=%s lunch=%s → %d coordinator(s)",
+            prefix, target, day_type, hours, arrival, departure, lunch, len(coords),
+        )
+
+        for coord in coords:
+            if day_type in ("sick", "off", "flex"):
                 await coord.async_edit_day(
                     target_date=target,
                     day_type=day_type,
