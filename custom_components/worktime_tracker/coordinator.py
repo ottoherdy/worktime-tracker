@@ -173,6 +173,25 @@ class WorktimeCoordinator(DataUpdateCoordinator):
     def work_zone_name(self) -> str:
         return self.work_zone.split(".", 1)[1]
 
+    def _is_at_work(self, state_value: str | None) -> bool:
+        """True if a person.* state value indicates presence in our work zone.
+
+        HA stores the zone's *friendly name* in person state — not the
+        entity_id slug. For 'zone.ellens_jobb' with friendly name
+        'Ellens Jobb', person.foo.state will be 'Ellens Jobb', not
+        'ellens_jobb'. Comparing only against the slug silently broke
+        zone detection for any zone whose friendly name had spaces or
+        differed in case from its slug.
+        """
+        if not state_value:
+            return False
+        v = state_value.lower()
+        if v == self.work_zone_name.lower():
+            return True
+        zone_state = self.hass.states.get(self.work_zone)
+        friendly = zone_state and zone_state.attributes.get("friendly_name")
+        return bool(friendly and v == friendly.lower())
+
     @property
     def notify_service(self) -> str | None:
         svc = self.options.get(CONF_NOTIFY_SERVICE)
@@ -315,7 +334,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         state = self.hass.states.get(self.person_entity)
         if (
             state
-            and state.state.lower() == self.work_zone_name.lower()
+            and self._is_at_work(state.state)
             and self.arrival is None
         ):
             await self.async_register_arrival(manual=False)
@@ -343,9 +362,8 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         if new_state is None:
             return
 
-        zone_name = self.work_zone_name
-        was_at_work = bool(old_state and old_state.state.lower() == zone_name.lower())
-        is_at_work = new_state.state.lower() == zone_name.lower()
+        was_at_work = bool(old_state and self._is_at_work(old_state.state))
+        is_at_work = self._is_at_work(new_state.state)
 
         now = dt_util.now()
         if not was_at_work and is_at_work:
