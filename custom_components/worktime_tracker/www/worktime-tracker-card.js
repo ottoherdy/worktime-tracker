@@ -1,5 +1,5 @@
 /**
- * Worktime Tracker Lovelace Card — v2.7.3
+ * Worktime Tracker Lovelace Card — v2.8.0
  * Vanilla Web Component, no build step. Auto-loaded via add_extra_js_url.
  *
  * Every option below has a control in the visual editor. The README
@@ -94,6 +94,7 @@ const DEFAULTS = {
   show_btn_departure: true,
   show_btn_lunch: true,
   show_btn_auto: true,
+  show_btn_export_all: false,
 };
 
 const COLOR_PRESETS = {
@@ -707,6 +708,7 @@ class WorktimeTrackerCard extends HTMLElement {
               <span class="foot-links">
                 <a href="#" id="link-export">Export</a>
                 <a href="#" id="link-sheets">Sheets</a>
+                ${this._cfg("show_btn_export_all") ? `<a href="#" id="link-export-all">Export all</a>` : ""}
               </span>
             </footer>` : ""}
         </div>
@@ -958,6 +960,12 @@ class WorktimeTrackerCard extends HTMLElement {
     $("btn-auto")?.addEventListener("click", () => this._toggleSwitch());
     $("link-export")?.addEventListener("click", (ev) => { ev.preventDefault(); this._callService("export_today"); });
     $("link-sheets")?.addEventListener("click", (ev) => { ev.preventDefault(); this._callService("export_today"); });
+    $("link-export-all")?.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      if (confirm("Export every locally-known day to Sheets? Only days that are missing or changed since the last push will be sent.")) {
+        this._callService("export_all");
+      }
+    });
 
     $("lookup-date")?.addEventListener("change", (ev) => {
       this._lookupDate = ev.target.value || _todayIso();
@@ -1540,6 +1548,7 @@ class WorktimeTrackerCardEditor extends HTMLElement {
       ["show_btn_departure", "Departure"],
       ["show_btn_lunch", "Lunch toggle"],
       ["show_btn_auto", "Auto-out toggle"],
+      ["show_btn_export_all", "Export all (footer link)"],
     ].map(([k, label]) => `
       <label class="row">
         <input type="checkbox" data-key="${k}" ${this._get(k) ? "checked" : ""}>

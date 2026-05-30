@@ -20,6 +20,7 @@ from .const import (
     SERVICE_LOG_DEPARTURE,
     SERVICE_RESET_TODAY,
     SERVICE_EXPORT_TODAY,
+    SERVICE_EXPORT_ALL,
     SERVICE_EDIT_DAY,
     LUNCH_YES,
     LUNCH_NO,
@@ -117,6 +118,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 SERVICE_LOG_DEPARTURE,
                 SERVICE_RESET_TODAY,
                 SERVICE_EXPORT_TODAY,
+                SERVICE_EXPORT_ALL,
                 SERVICE_EDIT_DAY,
             ):
                 if hass.services.has_service(DOMAIN, service):
@@ -178,6 +180,14 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         for coord in _get_coordinators(hass, _prefix(call)):
             await coord.async_export_today()
 
+    async def handle_export_all(call: ServiceCall) -> None:
+        from datetime import date as date_type
+        raw_since = call.data.get("since") or None
+        since = date_type.fromisoformat(raw_since) if raw_since else None
+        force = bool(call.data.get("force", False))
+        for coord in _get_coordinators(hass, _prefix(call)):
+            await coord.async_export_all(since=since, force=force)
+
     async def handle_edit_day(call: ServiceCall) -> None:
         from datetime import date as date_type
         raw_date = call.data.get("date") or None
@@ -219,6 +229,15 @@ async def _async_register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(DOMAIN, SERVICE_LOG_DEPARTURE, handle_log_departure, schema=no_arg_schema)
     hass.services.async_register(DOMAIN, SERVICE_RESET_TODAY, handle_reset_today, schema=no_arg_schema)
     hass.services.async_register(DOMAIN, SERVICE_EXPORT_TODAY, handle_export_today, schema=no_arg_schema)
+
+    export_all_schema = vol.Schema({
+        vol.Optional("since"): vol.Any(None, cv.string),
+        vol.Optional("force", default=False): cv.boolean,
+        vol.Optional("entry_prefix"): cv.string,
+    })
+    hass.services.async_register(
+        DOMAIN, SERVICE_EXPORT_ALL, handle_export_all, schema=export_all_schema
+    )
 
     edit_day_schema = vol.Schema({
         vol.Optional("date"): vol.Any(None, cv.string),
