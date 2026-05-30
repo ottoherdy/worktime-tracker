@@ -135,21 +135,31 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
 def _get_coordinators(
     hass: HomeAssistant, entry_prefix: str | None = None
 ) -> list[WorktimeCoordinator]:
-    """Return active coordinators. If entry_prefix is given, only the one
-    whose instance_name slug matches that prefix is returned."""
-    coordinators = []
-    for entry in hass.config_entries.async_entries(DOMAIN):
-        if not (hasattr(entry, "runtime_data") and isinstance(
-            entry.runtime_data, WorktimeCoordinator
-        )):
-            continue
-        if entry_prefix:
+    """Return the coordinator(s) a service call should target.
+
+    - With entry_prefix set: return the single entry whose instance_name
+      slug matches that prefix (used by additional instances like Ellen).
+    - Without entry_prefix: return ONLY the oldest active entry — the
+      original "default" instance. Returning every entry here is what
+      caused the original instance's actions to also clobber Ellen's
+      state, because her card's prefix-less calls would still match.
+    """
+    active = [
+        entry for entry in hass.config_entries.async_entries(DOMAIN)
+        if hasattr(entry, "runtime_data")
+        and isinstance(entry.runtime_data, WorktimeCoordinator)
+    ]
+    if entry_prefix:
+        for entry in active:
             name = entry.data.get("instance_name") or entry.title or ""
             slug = "".join(c if c.isalnum() else "_" for c in name.lower())
-            if slug != entry_prefix:
-                continue
-        coordinators.append(entry.runtime_data)
-    return coordinators
+            if slug == entry_prefix:
+                return [entry.runtime_data]
+        return []
+    if not active:
+        return []
+    # async_entries() returns entries in creation order — first = oldest.
+    return [active[0].runtime_data]
 
 
 async def _async_register_services(hass: HomeAssistant) -> None:
