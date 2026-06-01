@@ -1,5 +1,5 @@
 /**
- * Worktime Tracker Lovelace Card — v2.8.3
+ * Worktime Tracker Lovelace Card — v2.9.0
  * Vanilla Web Component, no build step. Auto-loaded via add_extra_js_url.
  *
  * Every option below has a control in the visual editor. The README
@@ -409,8 +409,20 @@ class WorktimeTrackerCard extends HTMLElement {
     const t = this._hass.states[ids.today];
     if (!t) return;
     const attr = t.attributes || {};
-    const hours = parseFloat(attr.hours) || 0;
+    const baseHours = parseFloat(attr.hours) || 0;
     const target = parseFloat(attr.daily_net_target) || 8;
+    // The sensor self-ticks every 30 s so attr.hours lags by up to 30 s.
+    // While the user is on the clock, extrapolate from the last sensor
+    // write so the elapsed display ticks smoothly second by second.
+    const status = attr.status;
+    let hours = baseHours;
+    if (status === "at_work" || status === "overtime") {
+      const lastUpdated = t.last_updated ? new Date(t.last_updated).getTime() : 0;
+      if (lastUpdated) {
+        const elapsedSinceUpdate = (Date.now() - lastUpdated) / 3.6e6;
+        if (elapsedSinceUpdate > 0) hours = baseHours + elapsedSinceUpdate;
+      }
+    }
     const { h, m } = _hoursToHM(hours);
     const overTarget = hours > target;
 
@@ -798,6 +810,7 @@ class WorktimeTrackerCard extends HTMLElement {
         : d.type === "sick" ? "sick"
         : d.type === "off" ? "off"
         : d.type === "flex" ? "flex"
+        : d.type === "home" ? "home"
         : _fmtHours(hoursNum, timeFmt);
       const editCell = editable
         ? `<div class="edit" data-row="${i}" title="Edit">${ICON.pencil}</div>`
@@ -823,6 +836,7 @@ class WorktimeTrackerCard extends HTMLElement {
       const hoursLabel = d.type === "sick" ? "sick"
         : d.type === "off" ? "off"
         : d.type === "flex" ? "flex"
+        : d.type === "home" ? "home"
         : _fmtHours(hoursNum, timeFmt);
       return `
         <div class="history-row ${editClass}" data-row="${i}">
@@ -857,11 +871,13 @@ class WorktimeTrackerCard extends HTMLElement {
       const typeLabel = match.type === "sick" ? "Sick"
         : match.type === "off" ? "Off"
         : match.type === "flex" ? "Flex"
+        : match.type === "home" ? "Work from home"
         : "Normal";
       const arrival = match.arrival || "—";
       const departure = match.departure || "—";
       const lunch = _lunchLabel(match.lunch);
-      const hoursTxt = match.type === "sick" || match.type === "off" || match.type === "flex"
+      const isLeaveType = ["sick", "off", "flex", "home"].includes(match.type);
+      const hoursTxt = isLeaveType
         ? `${hoursNum.toFixed(2)}h`
         : _fmtHours(hoursNum, timeFmt);
       body = `
@@ -908,6 +924,7 @@ class WorktimeTrackerCard extends HTMLElement {
             <label>Type</label>
             <select id="ed-type">
               <option value="normal" ${e.type === "normal" ? "selected" : ""}>Normal</option>
+              <option value="home" ${e.type === "home" ? "selected" : ""}>Work from home</option>
               <option value="sick" ${e.type === "sick" ? "selected" : ""}>Sick</option>
               <option value="flex" ${e.type === "flex" ? "selected" : ""}>Flex</option>
               <option value="off" ${e.type === "off" ? "selected" : ""}>Off / vacation</option>

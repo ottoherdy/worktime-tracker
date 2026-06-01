@@ -224,7 +224,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         )
 
         for coord in coords:
-            if day_type in ("sick", "off", "flex"):
+            if day_type in ("sick", "off", "flex", "home"):
                 await coord.async_edit_day(
                     target_date=target,
                     day_type=day_type,
@@ -268,7 +268,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         vol.Optional("arrival"): vol.Any(None, cv.string),
         vol.Optional("departure"): vol.Any(None, cv.string),
         vol.Optional("lunch"): vol.Any(None, "", vol.In([LUNCH_YES, LUNCH_NO, LUNCH_UNKNOWN])),
-        vol.Optional("type"): vol.Any(None, "", vol.In(["normal", "sick", "off", "flex"])),
+        vol.Optional("type"): vol.Any(None, "", vol.In(["normal", "sick", "off", "flex", "home"])),
         vol.Optional("hours"): vol.Any(None, "", vol.Coerce(float)),
         vol.Optional("entry_prefix"): cv.string,
     })
