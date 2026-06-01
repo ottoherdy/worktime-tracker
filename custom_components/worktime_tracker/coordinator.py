@@ -38,6 +38,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, HomeAssistant, State, callback
 from homeassistant.helpers.event import (
     async_call_later,
+    async_track_point_in_time,
     async_track_state_change_event,
     async_track_time_change,
 )
@@ -46,9 +47,15 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    ACTION_DEPARTURE_NOW,
     ACTION_LUNCH_NO,
     ACTION_LUNCH_YES,
+    ACTION_MORNING_ARRIVE,
+    ACTION_MORNING_HOME,
+    ACTION_MORNING_SICK,
     ACTION_TIMEREPORT_YES,
+    NOTIFICATION_TAG_DEPARTURE,
+    NOTIFICATION_TAG_MORNING,
     NOTIFICATION_TAG_TIMEREPORT,
     ACTION_TIMEREPORT_NO,
     CONF_AUTO_DEPARTURE_ENABLED,
@@ -58,7 +65,11 @@ from .const import (
     CONF_AUTO_LUNCH_DEFAULT,
     CONF_ARRIVAL_MARGIN_MINUTES,
     CONF_DEPARTURE_MARGIN_MINUTES,
+    CONF_FORGOT_DEPARTURE_ENABLED,
+    CONF_FORGOT_DEPARTURE_OFFSET_MIN,
     CONF_LUNCH_DEDUCTION,
+    CONF_MORNING_REMINDER_ENABLED,
+    CONF_MORNING_REMINDER_TIME,
     CONF_LUNCH_TIME,
     CONF_NOTIFY_SERVICE,
     CONF_PERSON,
@@ -68,6 +79,7 @@ from .const import (
     CONF_WORK_ZONE,
     CONF_WORKDAY_HOURS,
     DAY_TYPE_FLEX,
+    DAY_TYPE_HOME,
     DAY_TYPE_NORMAL,
     DAY_TYPE_OFF,
     DAY_TYPE_SICK,
@@ -78,8 +90,12 @@ from .const import (
     DEFAULT_AUTO_EXPORT_ENABLED,
     DEFAULT_AUTO_LUNCH_DEFAULT,
     DEFAULT_DEPARTURE_MARGIN_MINUTES,
+    DEFAULT_FORGOT_DEPARTURE_ENABLED,
+    DEFAULT_FORGOT_DEPARTURE_OFFSET_MIN,
     DEFAULT_LUNCH_DEDUCTION,
     DEFAULT_LUNCH_TIME,
+    DEFAULT_MORNING_REMINDER_ENABLED,
+    DEFAULT_MORNING_REMINDER_TIME,
     DEFAULT_SHEETS_WORKSHEET,
     DEFAULT_WEEKLY_TARGET,
     DEFAULT_WORKDAY_HOURS,
@@ -124,6 +140,10 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         self._legacy_store: Store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
         self._unsub: list[Any] = []
         self._unsub_auto_export: Any = None
+        self._unsub_forgot_departure: Any = None
+        # Notification de-dup flags reset at rollover
+        self._morning_notified: bool = False
+        self._forgot_departure_notified: bool = False
 
         # Today state
         self.arrival: datetime | None = None
@@ -204,6 +224,30 @@ class WorktimeCoordinator(DataUpdateCoordinator):
     @property
     def lunch_time_obj(self) -> time:
         return _parse_lunch_time(self.options.get(CONF_LUNCH_TIME, DEFAULT_LUNCH_TIME))
+
+    @property
+    def morning_reminder_enabled(self) -> bool:
+        return bool(self.options.get(
+            CONF_MORNING_REMINDER_ENABLED, DEFAULT_MORNING_REMINDER_ENABLED
+        ))
+
+    @property
+    def morning_reminder_time_obj(self) -> time:
+        return _parse_lunch_time(self.options.get(
+            CONF_MORNING_REMINDER_TIME, DEFAULT_MORNING_REMINDER_TIME
+        ))
+
+    @property
+    def forgot_departure_enabled(self) -> bool:
+        return bool(self.options.get(
+            CONF_FORGOT_DEPARTURE_ENABLED, DEFAULT_FORGOT_DEPARTURE_ENABLED
+        ))
+
+    @property
+    def forgot_departure_offset_minutes(self) -> int:
+        return int(self.options.get(
+            CONF_FORGOT_DEPARTURE_OFFSET_MIN, DEFAULT_FORGOT_DEPARTURE_OFFSET_MIN
+        ))
 
     @property
     def workday_hours(self) -> float:
@@ -330,6 +374,19 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             )
         )
 
+        # Morning reminder — checked every minute so options changes apply
+        # without reload. The handler short-circuits when disabled.
+        mr = self.morning_reminder_time_obj
+        self._unsub.append(
+            async_track_time_change(
+                self.hass,
+                self._handle_morning_reminder_time,
+                hour=mr.hour,
+                minute=mr.minute,
+                second=0,
+            )
+        )
+
         # Initial zone check
         state = self.hass.states.get(self.person_entity)
         if (
@@ -338,6 +395,10 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             and self.arrival is None
         ):
             await self.async_register_arrival(manual=False)
+        elif self.arrival is not None and self._departure is None:
+            # Restored mid-day from storage — re-arm the forgot-departure
+            # check so an HA restart doesn't drop the reminder.
+            self._schedule_forgot_departure_check()
 
         self.async_set_updated_data(self.snapshot())
 
@@ -352,6 +413,9 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         if self._unsub_auto_export is not None:
             self._unsub_auto_export()
             self._unsub_auto_export = None
+        if self._unsub_forgot_departure is not None:
+            self._unsub_forgot_departure()
+            self._unsub_forgot_departure = None
 
     # ------------------------------------------------------------------
     # Event handlers
@@ -430,6 +494,97 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         except Exception as exc:  # pylint: disable=broad-except
             _LOGGER.error("Worktime: timereport notification failed: %s", exc)
 
+    async def _handle_morning_reminder_time(self, now: datetime) -> None:
+        """Send the morning reminder if the user hasn't arrived and today
+        isn't already accounted for as sick / off / flex / home."""
+        if not self.morning_reminder_enabled:
+            return
+        if self._morning_notified:
+            return
+        if self.arrival is not None:
+            return
+        today_iso = now.date().isoformat()
+        if any(e.get("date") == today_iso for e in self.leave_records):
+            # Already marked as a leave day — don't nag
+            return
+        svc = self.notify_service
+        if not svc:
+            return
+        self._morning_notified = True
+        try:
+            await self.hass.services.async_call(
+                "notify",
+                svc,
+                {
+                    "title": "Worktime",
+                    "message": "Good morning — how is today shaping up?",
+                    "data": {
+                        "tag": NOTIFICATION_TAG_MORNING,
+                        "actions": [
+                            {"action": ACTION_MORNING_ARRIVE, "title": "Clock in now"},
+                            {"action": ACTION_MORNING_HOME, "title": "Working from home"},
+                            {"action": ACTION_MORNING_SICK, "title": "Sick today"},
+                        ],
+                    },
+                },
+                blocking=False,
+            )
+        except Exception as exc:  # pylint: disable=broad-except
+            _LOGGER.error("Worktime: morning reminder failed: %s", exc)
+
+    def _schedule_forgot_departure_check(self) -> None:
+        """Schedule a one-shot check at planned_end + offset minutes.
+        Cancels any existing pending check first."""
+        if self._unsub_forgot_departure is not None:
+            self._unsub_forgot_departure()
+            self._unsub_forgot_departure = None
+        if not self.forgot_departure_enabled:
+            return
+        if self.arrival is None or self._departure is not None:
+            return
+        pe = self.planned_end
+        if pe is None:
+            return
+        when = pe + timedelta(minutes=self.forgot_departure_offset_minutes)
+        if when <= dt_util.now():
+            # Already past — fire shortly so a freshly started HA notices
+            when = dt_util.now() + timedelta(seconds=15)
+        self._unsub_forgot_departure = async_track_point_in_time(
+            self.hass, self._handle_forgot_departure, when
+        )
+        _LOGGER.debug("Worktime: scheduled forgot-departure check at %s", when.isoformat())
+
+    async def _handle_forgot_departure(self, _now: datetime) -> None:
+        self._unsub_forgot_departure = None
+        if not self.forgot_departure_enabled:
+            return
+        if self._forgot_departure_notified:
+            return
+        if self.arrival is None or self._departure is not None:
+            return
+        svc = self.notify_service
+        if not svc:
+            return
+        self._forgot_departure_notified = True
+        try:
+            await self.hass.services.async_call(
+                "notify",
+                svc,
+                {
+                    "title": "Worktime",
+                    "message": "Still at work? Don't forget to clock out.",
+                    "data": {
+                        "tag": NOTIFICATION_TAG_DEPARTURE,
+                        "actions": [
+                            {"action": ACTION_DEPARTURE_NOW, "title": "Clock out now"},
+                        ],
+                    },
+                },
+                blocking=False,
+            )
+        except Exception as exc:  # pylint: disable=broad-except
+            _LOGGER.error("Worktime: forgot-departure notification failed: %s", exc)
+
     async def _handle_notification_action(self, event: Event) -> None:
         action = event.data.get("action")
         if action == ACTION_LUNCH_YES:
@@ -438,6 +593,20 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             await self.async_set_lunch(LUNCH_NO)
         elif action == ACTION_TIMEREPORT_YES:
             await self._async_append_to_sheet(source="notification")
+        elif action == ACTION_MORNING_ARRIVE:
+            await self.async_register_arrival(manual=True)
+        elif action == ACTION_MORNING_HOME:
+            await self.async_edit_day(
+                target_date=dt_util.now().date(),
+                day_type=DAY_TYPE_HOME,
+            )
+        elif action == ACTION_MORNING_SICK:
+            await self.async_edit_day(
+                target_date=dt_util.now().date(),
+                day_type=DAY_TYPE_SICK,
+            )
+        elif action == ACTION_DEPARTURE_NOW:
+            await self.async_register_departure(manual=True)
 
     # ------------------------------------------------------------------
     # Public actions
@@ -464,6 +633,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         _LOGGER.info("Worktime: arrival registered at %s", self.arrival.isoformat())
         await self._async_save()
         self.async_set_updated_data(self.snapshot())
+        self._schedule_forgot_departure_check()
 
     async def async_register_departure(self, manual: bool = False) -> None:
         """Register departure, calculate hours, save to history."""
@@ -484,6 +654,9 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                 stamp.isoformat(),
             )
         self._departure = stamp
+        if self._unsub_forgot_departure is not None:
+            self._unsub_forgot_departure()
+            self._unsub_forgot_departure = None
 
         # Resolve lunch at departure time using early-departure guard
         if self.lunch_status == LUNCH_UNKNOWN:
@@ -550,11 +723,11 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             local = datetime(ref_date.year, ref_date.month, ref_date.day, h, m)
             return dt_util.as_utc(dt_util.as_local(local))
 
-        if day_type in (DAY_TYPE_SICK, DAY_TYPE_OFF, DAY_TYPE_FLEX):
-            if day_type in (DAY_TYPE_SICK, DAY_TYPE_FLEX):
-                # Sick/flex default to a full net workday's worth of credit,
-                # but the caller can override via the hours argument
-                # (e.g. half-day sick: pass hours=4).
+        if day_type in (DAY_TYPE_SICK, DAY_TYPE_OFF, DAY_TYPE_FLEX, DAY_TYPE_HOME):
+            if day_type in (DAY_TYPE_SICK, DAY_TYPE_FLEX, DAY_TYPE_HOME):
+                # Sick/flex/home default to a full net workday's worth of
+                # credit, but the caller can override via the hours
+                # argument (e.g. half-day sick: pass hours=4).
                 default_hours = float(
                     self.options.get(CONF_WORKDAY_HOURS, DEFAULT_WORKDAY_HOURS)
                 ) - self.lunch_deduction
@@ -662,7 +835,12 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         self._departure = None
         self.lunch_status = LUNCH_UNKNOWN
         self._lunch_notified = False
+        self._morning_notified = False
+        self._forgot_departure_notified = False
         self._today_date = None
+        if self._unsub_forgot_departure is not None:
+            self._unsub_forgot_departure()
+            self._unsub_forgot_departure = None
 
     def _should_deduct_lunch(self) -> bool:
         """For today's live state. Apply early-departure guard."""
@@ -1265,6 +1443,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                 "Sick" if day_type == DAY_TYPE_SICK
                 else "Off" if day_type == DAY_TYPE_OFF
                 else "Flex" if day_type == DAY_TYPE_FLEX
+                else "Home" if day_type == DAY_TYPE_HOME
                 else "Normal"
             ),
             "Arrival": self._format_time(arrival),

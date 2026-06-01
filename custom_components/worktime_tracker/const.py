@@ -42,6 +42,7 @@ DAY_TYPE_NORMAL = "normal"
 DAY_TYPE_SICK = "sick"
 DAY_TYPE_OFF = "off"
 DAY_TYPE_FLEX = "flex"
+DAY_TYPE_HOME = "home"  # Worked from home — counts like a normal day, no GPS
 
 # Storage — keep original key and HA version so existing data is preserved.
 # Internal schema migrations use "schema_version" inside the data dict.
@@ -56,6 +57,23 @@ NOTIFICATION_TAG = "worktime_lunch_check"
 ACTION_TIMEREPORT_YES = "WORKTIME_TIMEREPORT_YES"
 ACTION_TIMEREPORT_NO = "WORKTIME_TIMEREPORT_NO"
 NOTIFICATION_TAG_TIMEREPORT = "worktime_timereport"
+ACTION_MORNING_ARRIVE = "WORKTIME_MORNING_ARRIVE"
+ACTION_MORNING_HOME = "WORKTIME_MORNING_HOME"
+ACTION_MORNING_SICK = "WORKTIME_MORNING_SICK"
+NOTIFICATION_TAG_MORNING = "worktime_morning_reminder"
+ACTION_DEPARTURE_NOW = "WORKTIME_DEPARTURE_NOW"
+NOTIFICATION_TAG_DEPARTURE = "worktime_forgot_departure"
+
+# New configuration keys (v2.9)
+CONF_MORNING_REMINDER_ENABLED = "morning_reminder_enabled"
+CONF_MORNING_REMINDER_TIME = "morning_reminder_time"
+CONF_FORGOT_DEPARTURE_ENABLED = "forgot_departure_enabled"
+CONF_FORGOT_DEPARTURE_OFFSET_MIN = "forgot_departure_offset_min"
+
+DEFAULT_MORNING_REMINDER_ENABLED = False
+DEFAULT_MORNING_REMINDER_TIME = "09:30"
+DEFAULT_FORGOT_DEPARTURE_ENABLED = False
+DEFAULT_FORGOT_DEPARTURE_OFFSET_MIN = 30
 
 # State / status values
 STATUS_OFF_DUTY = "off_duty"
