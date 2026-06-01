@@ -1,5 +1,5 @@
 /**
- * Worktime Tracker Lovelace Card — v2.8.3
+ * Worktime Tracker Lovelace Card — v2.8.4
  * Vanilla Web Component, no build step. Auto-loaded via add_extra_js_url.
  *
  * Every option below has a control in the visual editor. The README
@@ -409,8 +409,20 @@ class WorktimeTrackerCard extends HTMLElement {
     const t = this._hass.states[ids.today];
     if (!t) return;
     const attr = t.attributes || {};
-    const hours = parseFloat(attr.hours) || 0;
+    const baseHours = parseFloat(attr.hours) || 0;
     const target = parseFloat(attr.daily_net_target) || 8;
+    // The sensor self-ticks every 30 s so attr.hours lags by up to 30 s.
+    // While the user is on the clock, extrapolate from the last sensor
+    // write so the elapsed display ticks smoothly second by second.
+    const status = attr.status;
+    let hours = baseHours;
+    if (status === "at_work" || status === "overtime") {
+      const lastUpdated = t.last_updated ? new Date(t.last_updated).getTime() : 0;
+      if (lastUpdated) {
+        const elapsedSinceUpdate = (Date.now() - lastUpdated) / 3.6e6;
+        if (elapsedSinceUpdate > 0) hours = baseHours + elapsedSinceUpdate;
+      }
+    }
     const { h, m } = _hoursToHM(hours);
     const overTarget = hours > target;
 
