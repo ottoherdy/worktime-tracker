@@ -67,6 +67,7 @@ from .const import (
     CONF_DEPARTURE_MARGIN_MINUTES,
     CONF_FORGOT_DEPARTURE_ENABLED,
     CONF_FORGOT_DEPARTURE_OFFSET_MIN,
+    CONF_ZONE_EXIT_GRACE_MIN,
     CONF_LUNCH_DEDUCTION,
     CONF_MORNING_REMINDER_ENABLED,
     CONF_MORNING_REMINDER_TIME,
@@ -92,6 +93,7 @@ from .const import (
     DEFAULT_DEPARTURE_MARGIN_MINUTES,
     DEFAULT_FORGOT_DEPARTURE_ENABLED,
     DEFAULT_FORGOT_DEPARTURE_OFFSET_MIN,
+    DEFAULT_ZONE_EXIT_GRACE_MIN,
     DEFAULT_LUNCH_DEDUCTION,
     DEFAULT_LUNCH_TIME,
     DEFAULT_MORNING_REMINDER_ENABLED,
@@ -141,6 +143,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         self._unsub: list[Any] = []
         self._unsub_auto_export: Any = None
         self._unsub_forgot_departure: Any = None
+        self._unsub_zone_exit: Any = None
         # Notification de-dup flags reset at rollover
         self._morning_notified: bool = False
         self._forgot_departure_notified: bool = False
@@ -275,6 +278,12 @@ class WorktimeCoordinator(DataUpdateCoordinator):
     def forgot_departure_offset_minutes(self) -> int:
         return int(self.options.get(
             CONF_FORGOT_DEPARTURE_OFFSET_MIN, DEFAULT_FORGOT_DEPARTURE_OFFSET_MIN
+        ))
+
+    @property
+    def zone_exit_grace_minutes(self) -> int:
+        return int(self.options.get(
+            CONF_ZONE_EXIT_GRACE_MIN, DEFAULT_ZONE_EXIT_GRACE_MIN
         ))
 
     @property
@@ -444,6 +453,9 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         if self._unsub_forgot_departure is not None:
             self._unsub_forgot_departure()
             self._unsub_forgot_departure = None
+        if self._unsub_zone_exit is not None:
+            self._unsub_zone_exit()
+            self._unsub_zone_exit = None
 
     # ------------------------------------------------------------------
     # Event handlers
@@ -457,21 +469,66 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         was_at_work = bool(old_state and self._is_at_work(old_state.state))
         is_at_work = self._is_at_work(new_state.state)
 
-        now = dt_util.now()
         if not was_at_work and is_at_work:
+            # Re-entered the zone before the grace window expired — drop
+            # the pending exit so a brief Hemköp-and-back doesn't count.
+            if self._unsub_zone_exit is not None:
+                self._unsub_zone_exit()
+                self._unsub_zone_exit = None
+                _LOGGER.info("Worktime: re-entered work zone within grace — exit cancelled")
             _LOGGER.info("Worktime: arrived at work zone")
+            # async_register_arrival keeps the first-of-the-day timestamp
+            # untouched — it only sets arrival when none is registered yet.
             await self.async_register_arrival(manual=False)
         elif was_at_work and not is_at_work:
-            if (
-                self._auto_departure_enabled
-                and self.arrival is not None
-                and self._departure is None
-                and now.time() >= self.auto_departure_time_obj
-            ):
-                _LOGGER.info("Worktime: left zone after %s — auto-departure", self.auto_departure_time_obj)
-                await self.async_register_departure(manual=False)
-            else:
-                _LOGGER.info("Worktime: left zone — no auto-departure (disabled or too early)")
+            # Debounce: brief absences (GPS jitter, errand next door) get
+            # swallowed by the grace window. Only commit to auto-departure
+            # if the user is still out after grace_minutes have passed.
+            self._arm_zone_exit_check()
+
+    def _arm_zone_exit_check(self) -> None:
+        """Schedule the deferred zone-exit handler, replacing any pending
+        one. With grace = 0 we run the check immediately to preserve the
+        old behaviour."""
+        if self._unsub_zone_exit is not None:
+            self._unsub_zone_exit()
+            self._unsub_zone_exit = None
+        grace = self.zone_exit_grace_minutes
+        if grace <= 0:
+            self.hass.async_create_task(self._evaluate_zone_exit())
+            return
+        when = dt_util.now() + timedelta(minutes=grace)
+        self._unsub_zone_exit = async_track_point_in_time(
+            self.hass, self._handle_zone_exit_grace, when
+        )
+        _LOGGER.info("Worktime: zone exit — checking again at %s", when.isoformat())
+
+    async def _handle_zone_exit_grace(self, _now: datetime) -> None:
+        self._unsub_zone_exit = None
+        await self._evaluate_zone_exit()
+
+    async def _evaluate_zone_exit(self) -> None:
+        """Run after the grace window elapses. If the user is still out
+        of the zone and the auto-departure conditions are met, commit
+        the departure now."""
+        state = self.hass.states.get(self.person_entity)
+        if state and self._is_at_work(state.state):
+            # Already back at work — silently ignore (avoid log spam).
+            return
+        if not self._auto_departure_enabled:
+            _LOGGER.info("Worktime: left zone — no auto-departure (disabled)")
+            return
+        if self.arrival is None or self._departure is not None:
+            return
+        now = dt_util.now()
+        if now.time() < self.auto_departure_time_obj:
+            _LOGGER.info("Worktime: left zone — no auto-departure (too early)")
+            return
+        _LOGGER.info(
+            "Worktime: left zone after %s — auto-departure",
+            self.auto_departure_time_obj,
+        )
+        await self.async_register_departure(manual=False)
 
     async def _handle_lunch_time(self, now: datetime) -> None:
         if self.arrival is None or self._departure is not None:
@@ -873,6 +930,9 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         if self._unsub_forgot_departure is not None:
             self._unsub_forgot_departure()
             self._unsub_forgot_departure = None
+        if self._unsub_zone_exit is not None:
+            self._unsub_zone_exit()
+            self._unsub_zone_exit = None
 
     def _should_deduct_lunch(self) -> bool:
         """For today's live state. Apply early-departure guard."""
