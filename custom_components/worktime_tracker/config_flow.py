@@ -18,6 +18,7 @@ from .const import (
     CONF_AUTO_LUNCH_DEFAULT,
     CONF_FORGOT_DEPARTURE_ENABLED,
     CONF_FORGOT_DEPARTURE_OFFSET_MIN,
+    CONF_ZONE_EXIT_GRACE_MIN,
     CONF_LUNCH_DEDUCTION,
     CONF_LUNCH_TIME,
     CONF_MORNING_REMINDER_ENABLED,
@@ -36,6 +37,7 @@ from .const import (
     DEFAULT_AUTO_LUNCH_DEFAULT,
     DEFAULT_FORGOT_DEPARTURE_ENABLED,
     DEFAULT_FORGOT_DEPARTURE_OFFSET_MIN,
+    DEFAULT_ZONE_EXIT_GRACE_MIN,
     DEFAULT_LUNCH_DEDUCTION,
     DEFAULT_LUNCH_TIME,
     DEFAULT_MORNING_REMINDER_ENABLED,
@@ -179,6 +181,17 @@ def _build_user_schema(
             ): selector.NumberSelector(
                 selector.NumberSelectorConfig(
                     min=5, max=240, step=5, mode=selector.NumberSelectorMode.BOX,
+                    unit_of_measurement="min",
+                )
+            ),
+            vol.Required(
+                CONF_ZONE_EXIT_GRACE_MIN,
+                default=defaults.get(
+                    CONF_ZONE_EXIT_GRACE_MIN, DEFAULT_ZONE_EXIT_GRACE_MIN
+                ),
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=0, max=60, step=1, mode=selector.NumberSelectorMode.BOX,
                     unit_of_measurement="min",
                 )
             ),
