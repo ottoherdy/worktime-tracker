@@ -193,6 +193,34 @@ class WorktimeCoordinator(DataUpdateCoordinator):
     def work_zone_name(self) -> str:
         return self.work_zone.split(".", 1)[1]
 
+    @property
+    def instance_slug(self) -> str:
+        """Stable slug derived from the entry's instance_name. Used to
+        suffix notification actions and tags so a multi-instance setup
+        doesn't echo every action across all coordinators."""
+        name = self.entry.data.get("instance_name") or self.entry.title or ""
+        slug = "".join(c if c.isalnum() else "_" for c in name.lower())
+        return slug or DOMAIN
+
+    def _scoped(self, base: str) -> str:
+        """Append the instance slug so notification actions and tags
+        are unique per coordinator."""
+        return f"{base}__{self.instance_slug}"
+
+    def _matches_my_action(self, action: str, base: str) -> bool:
+        """True if a notification-action event belongs to this coordinator
+        and matches the given base action constant. Tolerates legacy
+        notifications fired before v2.9.1 that lack the slug suffix —
+        only the oldest entry replies in that case, mirroring the legacy
+        single-instance behaviour."""
+        if not action:
+            return False
+        if action == self._scoped(base):
+            return True
+        if action == base:
+            return self._is_oldest_entry()
+        return False
+
     def _is_at_work(self, state_value: str | None) -> bool:
         """True if a person.* state value indicates presence in our work zone.
 
@@ -482,10 +510,10 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                     "title": "Time report",
                     "message": "Have you submitted your time report?",
                     "data": {
-                        "tag": NOTIFICATION_TAG_TIMEREPORT,
+                        "tag": self._scoped(NOTIFICATION_TAG_TIMEREPORT),
                         "actions": [
-                            {"action": ACTION_TIMEREPORT_YES, "title": "Yes, done"},
-                            {"action": ACTION_TIMEREPORT_NO, "title": "Not yet"},
+                            {"action": self._scoped(ACTION_TIMEREPORT_YES), "title": "Yes, done"},
+                            {"action": self._scoped(ACTION_TIMEREPORT_NO), "title": "Not yet"},
                         ],
                     },
                 },
@@ -519,11 +547,11 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                     "title": "Worktime",
                     "message": "Good morning — how is today shaping up?",
                     "data": {
-                        "tag": NOTIFICATION_TAG_MORNING,
+                        "tag": self._scoped(NOTIFICATION_TAG_MORNING),
                         "actions": [
-                            {"action": ACTION_MORNING_ARRIVE, "title": "Clock in now"},
-                            {"action": ACTION_MORNING_HOME, "title": "Working from home"},
-                            {"action": ACTION_MORNING_SICK, "title": "Sick today"},
+                            {"action": self._scoped(ACTION_MORNING_ARRIVE), "title": "Clock in now"},
+                            {"action": self._scoped(ACTION_MORNING_HOME), "title": "Working from home"},
+                            {"action": self._scoped(ACTION_MORNING_SICK), "title": "Sick today"},
                         ],
                     },
                 },
@@ -574,9 +602,9 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                     "title": "Worktime",
                     "message": "Still at work? Don't forget to clock out.",
                     "data": {
-                        "tag": NOTIFICATION_TAG_DEPARTURE,
+                        "tag": self._scoped(NOTIFICATION_TAG_DEPARTURE),
                         "actions": [
-                            {"action": ACTION_DEPARTURE_NOW, "title": "Clock out now"},
+                            {"action": self._scoped(ACTION_DEPARTURE_NOW), "title": "Clock out now"},
                         ],
                     },
                 },
@@ -586,26 +614,30 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             _LOGGER.error("Worktime: forgot-departure notification failed: %s", exc)
 
     async def _handle_notification_action(self, event: Event) -> None:
-        action = event.data.get("action")
-        if action == ACTION_LUNCH_YES:
+        """Notification actions are emitted as a single global event;
+        every coordinator receives every action. Each coordinator only
+        responds to actions whose id ends with its own instance slug,
+        so 'Otto's lunch yes' doesn't also mark Ellen as having eaten."""
+        action = event.data.get("action") or ""
+        if self._matches_my_action(action, ACTION_LUNCH_YES):
             await self.async_set_lunch(LUNCH_YES)
-        elif action == ACTION_LUNCH_NO:
+        elif self._matches_my_action(action, ACTION_LUNCH_NO):
             await self.async_set_lunch(LUNCH_NO)
-        elif action == ACTION_TIMEREPORT_YES:
+        elif self._matches_my_action(action, ACTION_TIMEREPORT_YES):
             await self._async_append_to_sheet(source="notification")
-        elif action == ACTION_MORNING_ARRIVE:
+        elif self._matches_my_action(action, ACTION_MORNING_ARRIVE):
             await self.async_register_arrival(manual=True)
-        elif action == ACTION_MORNING_HOME:
+        elif self._matches_my_action(action, ACTION_MORNING_HOME):
             await self.async_edit_day(
                 target_date=dt_util.now().date(),
                 day_type=DAY_TYPE_HOME,
             )
-        elif action == ACTION_MORNING_SICK:
+        elif self._matches_my_action(action, ACTION_MORNING_SICK):
             await self.async_edit_day(
                 target_date=dt_util.now().date(),
                 day_type=DAY_TYPE_SICK,
             )
-        elif action == ACTION_DEPARTURE_NOW:
+        elif self._matches_my_action(action, ACTION_DEPARTURE_NOW):
             await self.async_register_departure(manual=True)
 
     # ------------------------------------------------------------------
@@ -1610,10 +1642,10 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                     "title": "Lunch check",
                     "message": "Did you have lunch today?",
                     "data": {
-                        "tag": NOTIFICATION_TAG,
+                        "tag": self._scoped(NOTIFICATION_TAG),
                         "actions": [
-                            {"action": ACTION_LUNCH_YES, "title": "Yes"},
-                            {"action": ACTION_LUNCH_NO, "title": "No"},
+                            {"action": self._scoped(ACTION_LUNCH_YES), "title": "Yes"},
+                            {"action": self._scoped(ACTION_LUNCH_NO), "title": "No"},
                         ],
                     },
                 },
