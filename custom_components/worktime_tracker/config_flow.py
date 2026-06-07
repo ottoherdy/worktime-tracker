@@ -19,6 +19,7 @@ from .const import (
     CONF_FORGOT_DEPARTURE_ENABLED,
     CONF_FORGOT_DEPARTURE_OFFSET_MIN,
     CONF_ZONE_EXIT_GRACE_MIN,
+    CONF_WORK_DAYS,
     CONF_LUNCH_DEDUCTION,
     CONF_LUNCH_TIME,
     CONF_MORNING_REMINDER_ENABLED,
@@ -38,6 +39,7 @@ from .const import (
     DEFAULT_FORGOT_DEPARTURE_ENABLED,
     DEFAULT_FORGOT_DEPARTURE_OFFSET_MIN,
     DEFAULT_ZONE_EXIT_GRACE_MIN,
+    DEFAULT_WORK_DAYS,
     DEFAULT_LUNCH_DEDUCTION,
     DEFAULT_LUNCH_TIME,
     DEFAULT_MORNING_REMINDER_ENABLED,
@@ -193,6 +195,24 @@ def _build_user_schema(
                 selector.NumberSelectorConfig(
                     min=0, max=60, step=1, mode=selector.NumberSelectorMode.BOX,
                     unit_of_measurement="min",
+                )
+            ),
+            vol.Required(
+                CONF_WORK_DAYS,
+                default=[str(d) for d in defaults.get(CONF_WORK_DAYS, DEFAULT_WORK_DAYS)],
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value="0", label="Monday"),
+                        selector.SelectOptionDict(value="1", label="Tuesday"),
+                        selector.SelectOptionDict(value="2", label="Wednesday"),
+                        selector.SelectOptionDict(value="3", label="Thursday"),
+                        selector.SelectOptionDict(value="4", label="Friday"),
+                        selector.SelectOptionDict(value="5", label="Saturday"),
+                        selector.SelectOptionDict(value="6", label="Sunday"),
+                    ],
+                    multiple=True,
+                    mode=selector.SelectSelectorMode.LIST,
                 )
             ),
         }

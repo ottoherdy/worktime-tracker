@@ -1,5 +1,5 @@
 /**
- * Worktime Tracker Lovelace Card — v2.9.3
+ * Worktime Tracker Lovelace Card — v2.9.4
  * Vanilla Web Component, no build step. Auto-loaded via add_extra_js_url.
  *
  * Every option below has a control in the visual editor. The README
@@ -809,9 +809,14 @@ class WorktimeTrackerCard extends HTMLElement {
       const isToday = d.date === todayIso;
       const hoursNum = parseFloat(d.hours) || 0;
       const overClass = hoursNum > target ? "over" : "under";
+      const isOffDay = d.is_work_day === false;
       const rowClasses = ["row"];
       if (empty) rowClasses.push("empty");
       if (isToday) rowClasses.push("today");
+      // Dim empty off-days (weekends by default) so the table doesn't
+      // look like the user skipped working them. Worked off-days render
+      // at full opacity.
+      if (isOffDay && empty) rowClasses.push("offday");
       const timesHtml = empty
         ? `—`
         : `${d.arrival || "—"}<span class="sep">→</span>${d.departure || "—"}`;
@@ -1371,6 +1376,8 @@ class WorktimeTrackerCard extends HTMLElement {
       .row.today .day { color: var(--wt-accent); }
       .row.empty .times,
       .row.empty .hours { color: var(--wt-muted-2); }
+      .row.offday { opacity: 0.55; }
+      .row.offday .day { color: var(--wt-muted); }
 
       /* Month summary */
       .month-card {

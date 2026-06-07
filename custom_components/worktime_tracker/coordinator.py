@@ -53,9 +53,11 @@ from .const import (
     ACTION_MORNING_ARRIVE,
     ACTION_MORNING_HOME,
     ACTION_MORNING_SICK,
+    ACTION_OFFDAY_ARRIVE,
     ACTION_TIMEREPORT_YES,
     NOTIFICATION_TAG_DEPARTURE,
     NOTIFICATION_TAG_MORNING,
+    NOTIFICATION_TAG_OFFDAY,
     NOTIFICATION_TAG_TIMEREPORT,
     ACTION_TIMEREPORT_NO,
     CONF_AUTO_DEPARTURE_ENABLED,
@@ -68,6 +70,7 @@ from .const import (
     CONF_FORGOT_DEPARTURE_ENABLED,
     CONF_FORGOT_DEPARTURE_OFFSET_MIN,
     CONF_ZONE_EXIT_GRACE_MIN,
+    CONF_WORK_DAYS,
     CONF_LUNCH_DEDUCTION,
     CONF_MORNING_REMINDER_ENABLED,
     CONF_MORNING_REMINDER_TIME,
@@ -94,6 +97,7 @@ from .const import (
     DEFAULT_FORGOT_DEPARTURE_ENABLED,
     DEFAULT_FORGOT_DEPARTURE_OFFSET_MIN,
     DEFAULT_ZONE_EXIT_GRACE_MIN,
+    DEFAULT_WORK_DAYS,
     DEFAULT_LUNCH_DEDUCTION,
     DEFAULT_LUNCH_TIME,
     DEFAULT_MORNING_REMINDER_ENABLED,
@@ -147,6 +151,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         # Notification de-dup flags reset at rollover
         self._morning_notified: bool = False
         self._forgot_departure_notified: bool = False
+        self._offday_notified: bool = False
 
         # Today state
         self.arrival: datetime | None = None
@@ -285,6 +290,24 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         return int(self.options.get(
             CONF_ZONE_EXIT_GRACE_MIN, DEFAULT_ZONE_EXIT_GRACE_MIN
         ))
+
+    @property
+    def work_days(self) -> list[int]:
+        """Configured working weekdays, normalized to ints (0=Mon..6=Sun).
+        Falls back to Mon–Fri if the option is missing or empty."""
+        raw = self.options.get(CONF_WORK_DAYS)
+        if not raw:
+            return list(DEFAULT_WORK_DAYS)
+        out: list[int] = []
+        for v in raw:
+            try:
+                out.append(int(v))
+            except (TypeError, ValueError):
+                continue
+        return out or list(DEFAULT_WORK_DAYS)
+
+    def is_work_day(self, d: date) -> bool:
+        return d.weekday() in self.work_days
 
     @property
     def workday_hours(self) -> float:
@@ -476,6 +499,15 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                 self._unsub_zone_exit()
                 self._unsub_zone_exit = None
                 _LOGGER.info("Worktime: re-entered work zone within grace — exit cancelled")
+            today = dt_util.now().date()
+            if self.arrival is None and not self.is_work_day(today):
+                # GPS triggered on a non-work day (e.g. Saturday). Don't
+                # commit automatically — ask the user. Auto-arrival would
+                # otherwise wreck the weekly target for someone who only
+                # popped into the office to grab something.
+                _LOGGER.info("Worktime: zone entry on non-work day — prompting user")
+                await self._async_send_offday_arrive_notification()
+                return
             _LOGGER.info("Worktime: arrived at work zone")
             # async_register_arrival keeps the first-of-the-day timestamp
             # untouched — it only sets arrival when none is registered yet.
@@ -588,6 +620,9 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             return
         if self.arrival is not None:
             return
+        if not self.is_work_day(now.date()):
+            # No nagging on weekends / configured days off
+            return
         today_iso = now.date().isoformat()
         if any(e.get("date") == today_iso for e in self.leave_records):
             # Already marked as a leave day — don't nag
@@ -670,6 +705,33 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         except Exception as exc:  # pylint: disable=broad-except
             _LOGGER.error("Worktime: forgot-departure notification failed: %s", exc)
 
+    async def _async_send_offday_arrive_notification(self) -> None:
+        if self._offday_notified:
+            return
+        svc = self.notify_service
+        if not svc:
+            return
+        self._offday_notified = True
+        try:
+            await self.hass.services.async_call(
+                "notify",
+                svc,
+                {
+                    "title": "Worktime",
+                    "message": "Looks like you're at the office on an off day. Clock in anyway?",
+                    "data": {
+                        "tag": self._scoped(NOTIFICATION_TAG_OFFDAY),
+                        "color": "#f59e0b",
+                        "actions": [
+                            {"action": self._scoped(ACTION_OFFDAY_ARRIVE), "title": "Yes, clock in"},
+                        ],
+                    },
+                },
+                blocking=False,
+            )
+        except Exception as exc:  # pylint: disable=broad-except
+            _LOGGER.error("Worktime: offday notification failed: %s", exc)
+
     async def _handle_notification_action(self, event: Event) -> None:
         """Notification actions are emitted as a single global event;
         every coordinator receives every action. Each coordinator only
@@ -696,6 +758,8 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             )
         elif self._matches_my_action(action, ACTION_DEPARTURE_NOW):
             await self.async_register_departure(manual=True)
+        elif self._matches_my_action(action, ACTION_OFFDAY_ARRIVE):
+            await self.async_register_arrival(manual=True)
 
     # ------------------------------------------------------------------
     # Public actions
@@ -972,6 +1036,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         self._lunch_notified = False
         self._morning_notified = False
         self._forgot_departure_notified = False
+        self._offday_notified = False
         self._today_date = None
         if self._unsub_forgot_departure is not None:
             self._unsub_forgot_departure()
@@ -1152,15 +1217,16 @@ class WorktimeCoordinator(DataUpdateCoordinator):
     def overtime_this_week(self) -> float:
         today = dt_util.now().date()
         monday = today - timedelta(days=today.weekday())
+        sunday = monday + timedelta(days=6)
         days_with_work = 0
-        for offset in range(5):
+        for offset in range(7):
             d = monday + timedelta(days=offset)
             if d > today:
                 break
             d_iso = d.isoformat()
             has_work = any(
                 e.get("date") == d_iso and float(e.get("hours", 0)) > 0
-                for e in self._all_credited_days(monday, today)
+                for e in self._all_credited_days(monday, sunday)
             )
             if not has_work and d == today and self.arrival is not None:
                 has_work = True
@@ -1173,14 +1239,14 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         today = dt_util.now().date()
         last_week_target = today - timedelta(weeks=1)
         monday = last_week_target - timedelta(days=last_week_target.weekday())
-        friday = monday + timedelta(days=4)
+        sunday = monday + timedelta(days=6)
         days_with_work = 0
-        for offset in range(5):
+        for offset in range(7):
             d = monday + timedelta(days=offset)
             d_iso = d.isoformat()
             if any(
                 e.get("date") == d_iso and float(e.get("hours", 0)) > 0
-                for e in self._all_credited_days(monday, friday)
+                for e in self._all_credited_days(monday, sunday)
             ):
                 days_with_work += 1
         expected = days_with_work * self.daily_net_target
@@ -1237,9 +1303,12 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         today = dt_util.now().date()
         monday = today - timedelta(days=today.weekday()) - timedelta(weeks=weeks_back)
         result = []
-        for offset in range(5):
+        # All 7 days — non-work days are still listed so worked weekends
+        # are visible. Card uses is_work_day to dim empty off-day rows.
+        for offset in range(7):
             d = monday + timedelta(days=offset)
             d_iso = d.isoformat()
+            is_work_day = self.is_work_day(d)
 
             # Search history and leave_records
             entry: dict[str, Any] | None = None
@@ -1288,6 +1357,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                     "human_readable": _hours_to_human(hours),
                     "type": day_type,
                     "punch_out_missing": entry.get("punch_out_missing", False),
+                    "is_work_day": is_work_day,
                 })
             else:
                 result.append({
@@ -1300,6 +1370,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                     "human_readable": "—",
                     "type": "none",
                     "punch_out_missing": False,
+                    "is_work_day": is_work_day,
                 })
         return result
 
