@@ -63,6 +63,8 @@ ACTION_MORNING_SICK = "WORKTIME_MORNING_SICK"
 NOTIFICATION_TAG_MORNING = "worktime_morning_reminder"
 ACTION_DEPARTURE_NOW = "WORKTIME_DEPARTURE_NOW"
 NOTIFICATION_TAG_DEPARTURE = "worktime_forgot_departure"
+ACTION_OFFDAY_ARRIVE = "WORKTIME_OFFDAY_ARRIVE"
+NOTIFICATION_TAG_OFFDAY = "worktime_offday_arrive"
 
 # New configuration keys (v2.9)
 CONF_MORNING_REMINDER_ENABLED = "morning_reminder_enabled"
@@ -70,12 +72,15 @@ CONF_MORNING_REMINDER_TIME = "morning_reminder_time"
 CONF_FORGOT_DEPARTURE_ENABLED = "forgot_departure_enabled"
 CONF_FORGOT_DEPARTURE_OFFSET_MIN = "forgot_departure_offset_min"
 CONF_ZONE_EXIT_GRACE_MIN = "zone_exit_grace_min"
+CONF_WORK_DAYS = "work_days"
 
 DEFAULT_MORNING_REMINDER_ENABLED = False
 DEFAULT_MORNING_REMINDER_TIME = "09:30"
 DEFAULT_FORGOT_DEPARTURE_ENABLED = False
 DEFAULT_FORGOT_DEPARTURE_OFFSET_MIN = 30
 DEFAULT_ZONE_EXIT_GRACE_MIN = 5
+# Weekday ints — 0 = Monday, 6 = Sunday.
+DEFAULT_WORK_DAYS = [0, 1, 2, 3, 4]
 
 # State / status values
 STATUS_OFF_DUTY = "off_duty"
