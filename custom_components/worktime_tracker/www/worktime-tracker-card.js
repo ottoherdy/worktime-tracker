@@ -1,5 +1,5 @@
 /**
- * Worktime Tracker Lovelace Card — v2.9.2
+ * Worktime Tracker Lovelace Card — v2.9.3
  * Vanilla Web Component, no build step. Auto-loaded via add_extra_js_url.
  *
  * Every option below has a control in the visual editor. The README
@@ -335,6 +335,16 @@ class WorktimeTrackerCard extends HTMLElement {
     // hours override applies to any type (lets you do half-day sick etc.)
     if (e.hours !== "") payload.hours = parseFloat(e.hours);
     this._callService("edit_day", payload);
+    this._closeEdit();
+  }
+
+  _clearEditDay() {
+    if (!this._editing) return;
+    const e = this._editing;
+    if (!confirm(`Clear ${e.date} entirely? Removes arrival, departure, lunch, hours and any sick/flex/home/off mark for this day.`)) {
+      return;
+    }
+    this._callService("clear_day", { date: e.date });
     this._closeEdit();
   }
 
@@ -953,10 +963,11 @@ class WorktimeTrackerCard extends HTMLElement {
           <div class="field">
             <label>Hours override (blank = default)</label>
             <input type="number" id="ed-hours" min="0" max="24" step="0.5" value="${e.hours}">
-            <div class="field-hint">For half-day sick or partial flex, set the credited hours here.</div>
+            <div class="field-hint">Sets the exact credited hours for this day, ignoring arrival/departure. Use for half-day sick, partial flex, or trimming accidental overtime.</div>
           </div>
 
           <div class="row-actions">
+            <button class="btn danger" id="ed-clear">Clear day</button>
             <button class="btn" id="ed-cancel">Cancel</button>
             <button class="btn primary" id="ed-save">Save</button>
           </div>
@@ -1053,6 +1064,7 @@ class WorktimeTrackerCard extends HTMLElement {
         e.hours = $("ed-hours")?.value || "";
         this._saveEdit();
       });
+      $("ed-clear")?.addEventListener("click", () => this._clearEditDay());
       $("ed-type")?.addEventListener("change", (ev) => {
         const isLeave = ev.target.value !== "normal";
         $("ed-field-arrival").style.display = isLeave ? "none" : "";
@@ -1257,6 +1269,8 @@ class WorktimeTrackerCard extends HTMLElement {
       }
       .btn:active { transform: translateY(1px); }
       .btn.primary { background: var(--wt-ink); color: var(--wt-card); border-color: var(--wt-ink); }
+      .btn.danger { color: var(--wt-danger); border-color: var(--wt-danger); }
+      .btn.danger:hover { background: var(--wt-danger); color: var(--wt-card); }
       .btn.ghost { background: transparent; }
       .btn .icon { width: 16px; height: 16px; flex-shrink: 0; }
       .btn .meta { color: var(--wt-muted); font-size: 12px; margin-left: 2px; }
