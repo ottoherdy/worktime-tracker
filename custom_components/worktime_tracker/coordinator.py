@@ -813,14 +813,20 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             return dt_util.as_utc(dt_util.as_local(local))
 
         if day_type in (DAY_TYPE_SICK, DAY_TYPE_OFF, DAY_TYPE_FLEX, DAY_TYPE_HOME):
-            if day_type in (DAY_TYPE_SICK, DAY_TYPE_FLEX, DAY_TYPE_HOME):
-                # Sick/flex/home default to a full net workday's worth of
-                # credit, but the caller can override via the hours
-                # argument (e.g. half-day sick: pass hours=4).
+            if day_type in (DAY_TYPE_SICK, DAY_TYPE_HOME):
+                # Sick / home default to a full net workday's worth of
+                # credit — they represent a whole day away from the
+                # office. Override with the hours argument for partial
+                # days (e.g. half-day sick: pass hours=4).
                 default_hours = float(
                     self.options.get(CONF_WORKDAY_HOURS, DEFAULT_WORKDAY_HOURS)
                 ) - self.lunch_deduction
                 leave_hours = hours if hours is not None else default_hours
+            elif day_type == DAY_TYPE_FLEX:
+                # Flex is an explicit credit/debit — never default to a
+                # whole workday. If the caller didn't pass hours we
+                # record 0 so the user has to enter what they want.
+                leave_hours = hours if hours is not None else 0.0
             else:
                 # Off day — counts 0 hours (vacation, day off)
                 leave_hours = hours if hours is not None else 0.0
@@ -874,8 +880,17 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         if lunch:
             entry["lunch"] = lunch
 
-        # Recalculate hours
-        if entry.get("arrival") and entry.get("departure"):
+        # Recalculate hours. An explicit hours= argument wins over the
+        # arrival→departure calculation — that's how the user overrides
+        # a day's total (e.g. trim accidental overtime, or set a half-
+        # day worked manually).
+        if hours is not None:
+            entry["hours"] = max(0.0, round(float(hours), 2))
+            entry["lunch_deduction"] = (
+                self.lunch_deduction
+                if self._should_deduct_lunch_for_entry(entry) else 0.0
+            )
+        elif entry.get("arrival") and entry.get("departure"):
             arr = datetime.fromisoformat(entry["arrival"])
             dep = datetime.fromisoformat(entry["departure"])
             raw_hours = (dep - arr).total_seconds() / 3600.0
@@ -899,6 +914,37 @@ class WorktimeCoordinator(DataUpdateCoordinator):
 
         self.async_set_updated_data(self.snapshot())
         _LOGGER.info("Worktime: edited day %s → %s", target_iso, entry)
+
+    async def async_clear_day(self, target_date: date) -> None:
+        """Wipe a day completely — removes any history + leave_records
+        entries for the date, and if it's today also clears the live
+        arrival / departure / lunch state so you can start tracking from
+        scratch. The Sheets row is left alone (manual cleanup there)."""
+        target_iso = target_date.isoformat()
+        before_history = len(self.history)
+        before_leave = len(self.leave_records)
+        self.history = [
+            e for e in self.history if e.get("date") != target_iso
+        ]
+        self.leave_records = [
+            e for e in self.leave_records if e.get("date") != target_iso
+        ]
+        removed = (before_history - len(self.history)) + (
+            before_leave - len(self.leave_records)
+        )
+
+        if target_date == dt_util.now().date():
+            self._reset_today_state()
+
+        # Drop any cached export fingerprint for this date so a subsequent
+        # export_all will re-emit cleanly if the user logs the day again.
+        self.sheets_sync.pop(target_iso, None)
+
+        await self._async_save()
+        self.async_set_updated_data(self.snapshot())
+        _LOGGER.info(
+            "Worktime: cleared %s (%d entries removed)", target_iso, removed
+        )
         await self._async_append_to_sheet(entry=entry, source="edit")
 
     async def async_set_auto_departure_enabled(self, enabled: bool) -> None:

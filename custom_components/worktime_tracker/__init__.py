@@ -22,6 +22,7 @@ from .const import (
     SERVICE_EXPORT_TODAY,
     SERVICE_EXPORT_ALL,
     SERVICE_EDIT_DAY,
+    SERVICE_CLEAR_DAY,
     LUNCH_YES,
     LUNCH_NO,
     LUNCH_UNKNOWN,
@@ -120,6 +121,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 SERVICE_EXPORT_TODAY,
                 SERVICE_EXPORT_ALL,
                 SERVICE_EDIT_DAY,
+                SERVICE_CLEAR_DAY,
             ):
                 if hass.services.has_service(DOMAIN, service):
                     hass.services.async_remove(DOMAIN, service)
@@ -240,6 +242,22 @@ async def _async_register_services(hass: HomeAssistant) -> None:
                     hours=hours,
                 )
 
+    async def handle_clear_day(call: ServiceCall) -> None:
+        from datetime import date as date_type
+        raw_date = call.data.get("date") or None
+        target = date_type.fromisoformat(raw_date) if raw_date else dt_util.now().date()
+
+        prefix = _prefix(call)
+        coords = _get_coordinators(hass, prefix)
+        if not coords:
+            _LOGGER.warning(
+                "Worktime: clear_day for %s (prefix=%r) matched no instance",
+                target, prefix,
+            )
+            return
+        for coord in coords:
+            await coord.async_clear_day(target_date=target)
+
     set_lunch_schema = vol.Schema({
         vol.Optional("had_lunch", default=True): cv.boolean,
         vol.Optional("entry_prefix"): cv.string,
@@ -274,4 +292,12 @@ async def _async_register_services(hass: HomeAssistant) -> None:
     })
     hass.services.async_register(
         DOMAIN, SERVICE_EDIT_DAY, handle_edit_day, schema=edit_day_schema
+    )
+
+    clear_day_schema = vol.Schema({
+        vol.Optional("date"): vol.Any(None, cv.string),
+        vol.Optional("entry_prefix"): cv.string,
+    })
+    hass.services.async_register(
+        DOMAIN, SERVICE_CLEAR_DAY, handle_clear_day, schema=clear_day_schema
     )
