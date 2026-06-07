@@ -1,5 +1,5 @@
 /**
- * Worktime Tracker Lovelace Card — v2.9.4
+ * Worktime Tracker Lovelace Card — v2.9.5
  * Vanilla Web Component, no build step. Auto-loaded via add_extra_js_url.
  *
  * Every option below has a control in the visual editor. The README
@@ -804,19 +804,29 @@ class WorktimeTrackerCard extends HTMLElement {
     if (!days || days.length === 0) return `<div class="row empty"><div class="day">—</div><div class="times">No data</div><div class="hours">—</div><div></div></div>`;
     const todayIso = _todayIso();
     const editable = !!this._cfg("show_edit");
-    return days.map((d, i) => {
+    // Empty off-days (weekends by default) are hidden entirely — the
+    // table should only show off-days when there's actual work logged
+    // there. Empty work-days stay visible so the user can see they
+    // haven't logged Mon–Fri yet. We keep the original index so the
+    // row-tap handler still resolves against _dayTables.
+    const visibleDays = days
+      .map((d, i) => ({ d, i }))
+      .filter(({ d }) => {
+        const empty = d.type === "none" || (d.arrival === "—" && d.hours === 0);
+        const isOffDay = d.is_work_day === false;
+        return !(isOffDay && empty);
+      });
+    if (visibleDays.length === 0) {
+      return `<div class="row empty"><div class="day">—</div><div class="times">No data</div><div class="hours">—</div><div></div></div>`;
+    }
+    return visibleDays.map(({ d, i }) => {
       const empty = d.type === "none" || (d.arrival === "—" && d.hours === 0);
       const isToday = d.date === todayIso;
       const hoursNum = parseFloat(d.hours) || 0;
       const overClass = hoursNum > target ? "over" : "under";
-      const isOffDay = d.is_work_day === false;
       const rowClasses = ["row"];
       if (empty) rowClasses.push("empty");
       if (isToday) rowClasses.push("today");
-      // Dim empty off-days (weekends by default) so the table doesn't
-      // look like the user skipped working them. Worked off-days render
-      // at full opacity.
-      if (isOffDay && empty) rowClasses.push("offday");
       const timesHtml = empty
         ? `—`
         : `${d.arrival || "—"}<span class="sep">→</span>${d.departure || "—"}`;
@@ -1376,8 +1386,6 @@ class WorktimeTrackerCard extends HTMLElement {
       .row.today .day { color: var(--wt-accent); }
       .row.empty .times,
       .row.empty .hours { color: var(--wt-muted-2); }
-      .row.offday { opacity: 0.55; }
-      .row.offday .day { color: var(--wt-muted); }
 
       /* Month summary */
       .month-card {
