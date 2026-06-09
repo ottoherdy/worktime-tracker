@@ -31,7 +31,7 @@ Go to **Settings → Devices & Services → + Add Integration → Worktime Track
 
 | Setting | Default | Description |
 |---|---|---|
-| Instance name | `Worktime Tracker` | Used as the slug for entities and routing — set a distinct value (e.g. `Otto`, `Ellen`) when adding more than one instance |
+| Instance name | `Worktime Tracker` | Used as the slug for entities and routing — set a distinct value (e.g. `Person 1`, `Person 2`) when adding more than one instance |
 | Person entity | — | The `person.*` or `device_tracker.*` to track |
 | Work zone | — | HA zone that counts as "at work" |
 | Notify service | — | Mobile notification service (e.g. `mobile_app_your_phone`, without `notify.` prefix). Leave empty to disable lunch and Friday notifications |
@@ -148,16 +148,17 @@ entity_prefix: ""            # slug of the instance to bind to — see below
 
 The integration accepts more than one config entry. Each one gets its own
 **instance name** (default `Worktime Tracker`) — set a distinct value like
-`Otto` or `Ellen` on the second instance to avoid entity-ID collisions, and
-each instance gets its own isolated storage file so history can't bleed
-across people.
+`Person 1` or `Person 2` on the second instance to avoid entity-ID
+collisions, and each instance gets its own isolated storage file so history
+can't bleed across people.
 
 The card defaults to reading `sensor.today_hours_today` etc. (the original
 instance). To bind a card to another instance, set `entity_prefix` to its
-slug — e.g. instance name `Ellen` → `entity_prefix: ellen`, instance name
-`Worktime Tracker Otto` → `entity_prefix: worktime_tracker_otto`. The card
-then reads `sensor.<prefix>_today_hours_today` and stamps service calls with
-that prefix so only the matching coordinator responds.
+slug — e.g. instance name `Person 2` → `entity_prefix: person_2`,
+instance name `Worktime Tracker Person 1` → `entity_prefix:
+worktime_tracker_person_1`. The card then reads
+`sensor.<prefix>_today_hours_today` and stamps service calls with that
+prefix so only the matching coordinator responds.
 
 If `edit_day` (or any action) does nothing for an instance, check
 **Settings → System → Logs** for a `Worktime: edit_day for … matched no
@@ -231,7 +232,7 @@ for the latest state.
 - Arrival logged when you enter the work zone (first time per day)
 - Time runs continuously — brief zone exits (lunch, errands) do not stop the clock
 - Departure logged when you leave the zone **at or after** the configured auto-departure time (if the toggle is on), or manually via the dashboard button
-- Zone matching uses the zone's **friendly name** (what HA actually stores in `person.*` state), so multi-word zones like `Ellen's Office` work the same as single-word slugs
+- Zone matching uses the zone's **friendly name** (what HA actually stores in `person.*` state), so multi-word zones like `My Office` work the same as single-word slugs
 
 ### Lunch tracking
 

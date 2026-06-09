@@ -233,9 +233,9 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         """True if a person.* state value indicates presence in our work zone.
 
         HA stores the zone's *friendly name* in person state — not the
-        entity_id slug. For 'zone.ellens_jobb' with friendly name
-        'Ellens Jobb', person.foo.state will be 'Ellens Jobb', not
-        'ellens_jobb'. Comparing only against the slug silently broke
+        entity_id slug. For 'zone.my_office' with friendly name
+        'My Office', person.foo.state will be 'My Office', not
+        'my_office'. Comparing only against the slug silently broke
         zone detection for any zone whose friendly name had spaces or
         differed in case from its slug.
         """
@@ -736,7 +736,8 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         """Notification actions are emitted as a single global event;
         every coordinator receives every action. Each coordinator only
         responds to actions whose id ends with its own instance slug,
-        so 'Otto's lunch yes' doesn't also mark Ellen as having eaten."""
+        so person 1's 'lunch yes' doesn't also mark person 2 as having
+        eaten."""
         action = event.data.get("action") or ""
         if self._matches_my_action(action, ACTION_LUNCH_YES):
             await self.async_set_lunch(LUNCH_YES)
@@ -977,7 +978,22 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             await self._async_save()
 
         self.async_set_updated_data(self.snapshot())
-        _LOGGER.info("Worktime: edited day %s → %s", target_iso, entry)
+        _LOGGER.info(
+            "Worktime[%s]: edited %s — arrival=%s departure=%s lunch=%s "
+            "hours=%s (received hours=%s, arrival=%s, departure=%s, "
+            "lunch=%s, day_type=%s)",
+            self.instance_slug,
+            target_iso,
+            entry.get("arrival"),
+            entry.get("departure"),
+            entry.get("lunch"),
+            entry.get("hours"),
+            hours,
+            arrival,
+            departure,
+            lunch,
+            day_type,
+        )
 
     async def async_clear_day(self, target_date: date) -> None:
         """Wipe a day completely — removes any history + leave_records

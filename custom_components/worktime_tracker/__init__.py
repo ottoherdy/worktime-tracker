@@ -143,8 +143,9 @@ def _get_coordinators(
       slug matches (returns [] on miss).
     - Without entry_prefix: return ALL entries on single-instance setups
       (so legacy automations keep working), but only the oldest entry on
-      multi-instance setups. Otherwise an Otto-card whose entity_prefix
-      slot is empty would silently edit Ellen's day too.
+      multi-instance setups. Otherwise a card on the second instance with
+      its entity_prefix slot empty would silently edit the first
+      instance's day too.
     """
     active = []
     for entry in hass.config_entries.async_entries(DOMAIN):
