@@ -1,5 +1,5 @@
 /**
- * Worktime Tracker Lovelace Card — v2.9.7
+ * Worktime Tracker Lovelace Card — v2.9.8
  * Vanilla Web Component, no build step. Auto-loaded via add_extra_js_url.
  *
  * Every option below has a control in the visual editor. The README
@@ -34,7 +34,7 @@ function _entities(prefix) {
     };
   }
   // New unified layout — every sensor on the same device, so the
-  // prefix is the full device slug (e.g. "worktime_tracker_ellen").
+  // prefix is the full device slug (e.g. "worktime_tracker_person_2").
   return {
     today: `sensor.${p}_hours_today`,
     week: `sensor.${p}_hours_this_week`,
@@ -486,6 +486,16 @@ class WorktimeTrackerCard extends HTMLElement {
     if (!hass) return;
     if (this._editing && this.shadowRoot.getElementById("modal-backdrop")) return;
 
+    // Detect multi-instance + missing prefix. Edits and actions from this
+    // card would otherwise route to the wrong coordinator (the oldest
+    // entry per v2.9.6's safety fallback), so warn the user loudly.
+    const myPrefix = (this._cfg("entity_prefix") || "").trim();
+    const todayMatches = Object.keys(hass.states).filter((k) =>
+      /^sensor\..*hours_today$/.test(k) && k.endsWith("_hours_today")
+    );
+    const multipleInstances = todayMatches.length > 1;
+    const missingPrefix = multipleInstances && !myPrefix;
+
     const ids = this._entityIds();
     const todayState = hass.states[ids.today];
     const weekState = hass.states[ids.week];
@@ -634,10 +644,17 @@ class WorktimeTrackerCard extends HTMLElement {
       "wt-override",
     ].filter(Boolean).join(" ");
 
+    const prefixWarning = missingPrefix ? `
+      <div class="prefix-warning">
+        <strong>Multiple instances detected.</strong>
+        Set <code>entity_prefix</code> on this card (visual editor → Entity prefix) to point it at one specific instance. Without it, actions route to the oldest instance only.
+      </div>` : "";
+
     this.shadowRoot.innerHTML = `
       <style>${this._styles(padding, maxWidthCss, fontScale, cornerRadius)}${themeOverrideCss}</style>
       <ha-card class="${cardClasses}">
         <div class="app">
+          ${prefixWarning}
           ${showTopbar ? `
             <header class="topbar">
               <span class="mono date">${_formatTopbarDate()}</span>
@@ -1395,6 +1412,22 @@ class WorktimeTrackerCard extends HTMLElement {
       .row.empty .times,
       .row.empty .hours { color: var(--wt-muted-2); }
 
+      .prefix-warning {
+        background: var(--wt-warn, #f59e0b);
+        color: #1a1306;
+        border-radius: 10px;
+        padding: 10px 12px;
+        margin-bottom: 12px;
+        font-size: 13px;
+        line-height: 1.4;
+      }
+      .prefix-warning code {
+        background: rgba(0,0,0,.15);
+        padding: 1px 4px;
+        border-radius: 4px;
+        font-family: ui-monospace, SFMono-Regular, monospace;
+      }
+
       /* Month summary */
       .month-card {
         background: var(--wt-card);
@@ -1818,7 +1851,7 @@ class WorktimeTrackerCardEditor extends HTMLElement {
       <div class="group">
         <div class="group-title">Entity prefix (multi-instance)</div>
         <div class="input-row">
-          <input id="ed-prefix" type="text" placeholder="e.g. worktime_tracker_ellen" value="${this._get("entity_prefix") || ""}">
+          <input id="ed-prefix" type="text" placeholder="e.g. worktime_tracker_person_2" value="${this._get("entity_prefix") || ""}">
         </div>
         <div class="hint">
           Leave blank for the legacy/default instance. For additional
