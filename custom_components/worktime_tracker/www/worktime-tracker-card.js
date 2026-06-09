@@ -1,5 +1,5 @@
 /**
- * Worktime Tracker Lovelace Card — v2.9.6
+ * Worktime Tracker Lovelace Card — v2.9.7
  * Vanilla Web Component, no build step. Auto-loaded via add_extra_js_url.
  *
  * Every option below has a control in the visual editor. The README
@@ -307,13 +307,21 @@ class WorktimeTrackerCard extends HTMLElement {
 
   _openEdit(day) {
     if (!day) return;
+    const dayType = day.type === "none" ? "normal" : (day.type || "normal");
+    // Pre-fill hours only when it's the authoritative value (leave
+    // record types). For a normal day we leave hours blank so saving
+    // a tweak to arrival/departure recomputes — pre-filling with
+    // day.hours would force-save the existing total even when the user
+    // changed the times, and pre-filling with 0 (the initial value on a
+    // freshly Added day) silently overrode the recompute with 0h.
+    const isLeaveType = ["sick", "off", "flex", "home"].includes(dayType);
     this._editing = {
       date: day.date,
       arrival: _timeForInput(day.arrival),
       departure: _timeForInput(day.departure),
       lunch: day.lunch && day.lunch !== "—" ? day.lunch : "",
-      type: day.type === "none" ? "normal" : (day.type || "normal"),
-      hours: day.hours != null ? String(day.hours) : "",
+      type: dayType,
+      hours: isLeaveType && day.hours != null ? String(day.hours) : "",
     };
     this._render();
   }
