@@ -1,5 +1,5 @@
 /**
- * Worktime Tracker Lovelace Card — v2.9.5
+ * Worktime Tracker Lovelace Card — v2.9.6
  * Vanilla Web Component, no build step. Auto-loaded via add_extra_js_url.
  *
  * Every option below has a control in the visual editor. The README

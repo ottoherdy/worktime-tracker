@@ -137,21 +137,41 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
 def _get_coordinators(
     hass: HomeAssistant, entry_prefix: str | None = None
 ) -> list[WorktimeCoordinator]:
-    """Return active coordinators. If entry_prefix is given, only the one
-    whose instance_name slug matches that prefix is returned."""
-    coordinators = []
+    """Return the coordinator(s) a service call should target.
+
+    - With entry_prefix set: return the single entry whose instance_name
+      slug matches (returns [] on miss).
+    - Without entry_prefix: return ALL entries on single-instance setups
+      (so legacy automations keep working), but only the oldest entry on
+      multi-instance setups. Otherwise an Otto-card whose entity_prefix
+      slot is empty would silently edit Ellen's day too.
+    """
+    active = []
     for entry in hass.config_entries.async_entries(DOMAIN):
-        if not (hasattr(entry, "runtime_data") and isinstance(
+        if hasattr(entry, "runtime_data") and isinstance(
             entry.runtime_data, WorktimeCoordinator
-        )):
-            continue
-        if entry_prefix:
+        ):
+            active.append(entry)
+    if not active:
+        return []
+    if entry_prefix:
+        for entry in active:
             name = entry.data.get("instance_name") or entry.title or ""
             slug = "".join(c if c.isalnum() else "_" for c in name.lower())
-            if slug != entry_prefix:
-                continue
-        coordinators.append(entry.runtime_data)
-    return coordinators
+            if slug == entry_prefix:
+                return [entry.runtime_data]
+        return []
+    if len(active) == 1:
+        return [active[0].runtime_data]
+    # Multi-instance + no prefix → target the oldest only. async_entries
+    # returns entries in creation order, so [0] is the original instance.
+    _LOGGER.warning(
+        "Worktime: service call without entry_prefix on a multi-instance "
+        "setup — defaulting to the oldest entry (%s). Set entity_prefix "
+        "on the other instance's card to address it specifically.",
+        active[0].data.get("instance_name") or active[0].title,
+    )
+    return [active[0].runtime_data]
 
 
 async def _async_register_services(hass: HomeAssistant) -> None:
