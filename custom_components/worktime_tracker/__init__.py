@@ -23,6 +23,7 @@ from .const import (
     SERVICE_EXPORT_ALL,
     SERVICE_EDIT_DAY,
     SERVICE_CLEAR_DAY,
+    SERVICE_SET_PERIOD,
     LUNCH_YES,
     LUNCH_NO,
     LUNCH_UNKNOWN,
@@ -122,6 +123,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 SERVICE_EXPORT_ALL,
                 SERVICE_EDIT_DAY,
                 SERVICE_CLEAR_DAY,
+                SERVICE_SET_PERIOD,
             ):
                 if hass.services.has_service(DOMAIN, service):
                     hass.services.async_remove(DOMAIN, service)
@@ -263,6 +265,79 @@ async def _async_register_services(hass: HomeAssistant) -> None:
                     hours=hours,
                 )
 
+    async def handle_set_period(call: ServiceCall) -> None:
+        from datetime import date as date_type, timedelta
+        raw_start = call.data.get("start_date") or None
+        raw_end = call.data.get("end_date") or None
+        if not raw_start or not raw_end:
+            _LOGGER.warning(
+                "Worktime: set_period requires start_date and end_date"
+            )
+            return
+        try:
+            start = date_type.fromisoformat(raw_start)
+            end = date_type.fromisoformat(raw_end)
+        except ValueError:
+            _LOGGER.warning(
+                "Worktime: set_period got invalid dates start=%r end=%r",
+                raw_start, raw_end,
+            )
+            return
+        if end < start:
+            _LOGGER.warning(
+                "Worktime: set_period end_date %s is before start_date %s",
+                end, start,
+            )
+            return
+
+        day_type = call.data.get("type")
+        raw_hours = call.data.get("hours")
+        hours = float(raw_hours) if raw_hours not in (None, "") else None
+        skip_existing = bool(call.data.get("skip_existing", False))
+
+        prefix = _prefix(call)
+        coords = _get_coordinators(hass, prefix)
+        if not coords:
+            _LOGGER.warning(
+                "Worktime: set_period %s..%s (prefix=%r) matched no instance",
+                start, end, prefix,
+            )
+            return
+
+        span = (end - start).days + 1
+        _LOGGER.info(
+            "Worktime: set_period prefix=%r %s..%s (%d days) type=%s hours=%s "
+            "skip_existing=%s → %d coordinator(s)",
+            prefix, start, end, span, day_type, hours, skip_existing, len(coords),
+        )
+
+        for coord in coords:
+            existing_dates = {
+                e.get("date") for e in coord.history
+            } | {
+                e.get("date") for e in coord.leave_records
+            }
+            written = 0
+            skipped = 0
+            cur = start
+            while cur <= end:
+                iso = cur.isoformat()
+                if skip_existing and iso in existing_dates:
+                    skipped += 1
+                else:
+                    await coord.async_edit_day(
+                        target_date=cur,
+                        day_type=day_type,
+                        hours=hours,
+                    )
+                    written += 1
+                cur += timedelta(days=1)
+            _LOGGER.info(
+                "Worktime: set_period wrote %d, skipped %d existing for "
+                "%s..%s (type=%s)",
+                written, skipped, start, end, day_type,
+            )
+
     async def handle_clear_day(call: ServiceCall) -> None:
         from datetime import date as date_type
         raw_date = call.data.get("date") or None
@@ -321,4 +396,16 @@ async def _async_register_services(hass: HomeAssistant) -> None:
     })
     hass.services.async_register(
         DOMAIN, SERVICE_CLEAR_DAY, handle_clear_day, schema=clear_day_schema
+    )
+
+    set_period_schema = vol.Schema({
+        vol.Required("start_date"): cv.string,
+        vol.Required("end_date"): cv.string,
+        vol.Required("type"): vol.In(["normal", "sick", "off", "flex", "home"]),
+        vol.Optional("hours"): vol.Any(None, "", vol.Coerce(float)),
+        vol.Optional("skip_existing", default=False): cv.boolean,
+        vol.Optional("entry_prefix"): cv.string,
+    })
+    hass.services.async_register(
+        DOMAIN, SERVICE_SET_PERIOD, handle_set_period, schema=set_period_schema
     )

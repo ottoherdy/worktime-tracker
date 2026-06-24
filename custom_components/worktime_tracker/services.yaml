@@ -115,3 +115,66 @@ edit_day:
           max: 24
           step: 0.5
           unit_of_measurement: h
+
+set_period:
+  name: Set period
+  description: >
+    Mark every day in a date range as the same type — useful for
+    vacation weeks, longer sick leave, or back-filling a stretch of
+    flex / work-from-home days. Loops from start_date to end_date
+    inclusive and runs edit_day for each.
+  fields:
+    start_date:
+      name: Start date
+      description: First day of the period (YYYY-MM-DD).
+      required: true
+      selector:
+        date:
+    end_date:
+      name: End date
+      description: Last day of the period, inclusive (YYYY-MM-DD).
+      required: true
+      selector:
+        date:
+    type:
+      name: Type
+      description: >
+        Day type to apply to every day in the range. "off" is the usual
+        choice for vacation.
+      required: true
+      selector:
+        select:
+          options:
+            - "off"
+            - "sick"
+            - "flex"
+            - "home"
+            - "normal"
+    hours:
+      name: Hours
+      description: >
+        Override hours counted per day. Leave empty for the default
+        (sick / home → net workday hours, off / flex → 0).
+      required: false
+      selector:
+        number:
+          min: 0
+          max: 24
+          step: 0.5
+          unit_of_measurement: h
+    skip_existing:
+      name: Skip existing
+      description: >
+        Don't overwrite days that already have any history or leave
+        entry. Useful if you want to fill a vacation period without
+        clobbering normal workdays that fell inside it.
+      required: false
+      default: false
+      selector:
+        boolean:
+    entry_prefix:
+      name: Entry prefix
+      description: For multi-instance setups — restrict to this instance.
+      required: false
+      selector:
+        text:
