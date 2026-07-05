@@ -24,6 +24,7 @@ from .const import (
     SERVICE_EDIT_DAY,
     SERVICE_CLEAR_DAY,
     SERVICE_SET_PERIOD,
+    MAX_SET_PERIOD_DAYS,
     LUNCH_YES,
     LUNCH_NO,
     LUNCH_UNKNOWN,
@@ -289,6 +290,15 @@ async def _async_register_services(hass: HomeAssistant) -> None:
                 end, start,
             )
             return
+        span = (end - start).days + 1
+        if span > MAX_SET_PERIOD_DAYS:
+            _LOGGER.warning(
+                "Worktime: set_period range %s..%s spans %d days, above the "
+                "%d-day safety cap — refusing to run. Split it into smaller "
+                "chunks if that's really what you meant.",
+                start, end, span, MAX_SET_PERIOD_DAYS,
+            )
+            return
 
         day_type = call.data.get("type")
         raw_hours = call.data.get("hours")
@@ -304,7 +314,6 @@ async def _async_register_services(hass: HomeAssistant) -> None:
             )
             return
 
-        span = (end - start).days + 1
         _LOGGER.info(
             "Worktime: set_period prefix=%r %s..%s (%d days) type=%s hours=%s "
             "skip_existing=%s → %d coordinator(s)",
@@ -329,6 +338,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
                         target_date=cur,
                         day_type=day_type,
                         hours=hours,
+                        sync_sheets=False,
                     )
                     written += 1
                 cur += timedelta(days=1)
@@ -337,6 +347,12 @@ async def _async_register_services(hass: HomeAssistant) -> None:
                 "%s..%s (type=%s)",
                 written, skipped, start, end, day_type,
             )
+            # Sheets sync runs in the background so the service call
+            # returns as soon as local writes are done. export_all
+            # fingerprints every row and skips unchanged ones, so this
+            # only sends the days we actually touched.
+            if written:
+                hass.async_create_task(coord.async_export_all(since=start))
 
     async def handle_clear_day(call: ServiceCall) -> None:
         from datetime import date as date_type

@@ -102,3 +102,8 @@ SERVICE_EXPORT_ALL = "export_all"
 SERVICE_EDIT_DAY = "edit_day"
 SERVICE_CLEAR_DAY = "clear_day"
 SERVICE_SET_PERIOD = "set_period"
+
+# Safety cap for set_period. A vacation, home-office run or long sick
+# leave rarely exceeds a year, and this stops a fat-fingered range from
+# tying up the event loop rewriting storage thousands of times.
+MAX_SET_PERIOD_DAYS = 366

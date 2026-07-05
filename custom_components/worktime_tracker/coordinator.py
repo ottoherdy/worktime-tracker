@@ -862,11 +862,22 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         lunch: str | None = None,
         day_type: str | None = None,
         hours: float | None = None,
+        sync_sheets: bool = True,
     ) -> None:
         """Edit or create a day entry.
 
-        If day_type == 'sick': add/replace in leave_records.
-        Otherwise: edit/create in history.
+        If day_type is a leave type (sick / off / flex / home): add /
+        replace in leave_records and drop any history entry for the
+        same date. Otherwise: edit / create in history and drop any
+        leave record for the same date. The two structures are treated
+        as mutually exclusive by date — _all_credited_days concatenates
+        them naively and would double-count anything that appears in
+        both.
+
+        sync_sheets=False skips the per-day Sheets append. Bulk callers
+        (set_period) use this and trigger a single async_export_all in
+        the background instead of firing one blocking Sheets round-trip
+        per day.
         """
         today = dt_util.now().date()
         target_iso = target_date.isoformat()
@@ -914,11 +925,17 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             await self._async_save()
             self.async_set_updated_data(self.snapshot())
             _LOGGER.info("Worktime: %s day set for %s (%.2fh)", day_type, target_iso, leave_hours)
-            await self._async_append_to_sheet(entry=leave_entry, source="edit")
+            if sync_sheets:
+                await self._async_append_to_sheet(entry=leave_entry, source="edit")
             return
 
-        # Normal day edit
-        # Find or create history entry
+        # Normal day edit.
+        # Mirror the leave-branch cleanup: strip any pre-existing leave
+        # record for this date so the same day can't live in both
+        # structures and double-count in weekly totals.
+        self.leave_records = [
+            e for e in self.leave_records if e.get("date") != target_iso
+        ]
         entry: dict[str, Any] | None = None
         for e in self.history:
             if e.get("date") == target_iso:
