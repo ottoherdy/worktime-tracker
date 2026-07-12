@@ -507,12 +507,25 @@ class WorktimeTrackerCard extends HTMLElement {
     const switchState = hass.states[ids.sw];
 
     if (!todayState) {
+      // Extract the actual prefixes present in this HA install so the
+      // user can copy one verbatim instead of guessing. "today" here
+      // means the legacy first-ever instance (its sensor lives at
+      // sensor.today_hours_today, no per-instance device slug).
+      const detectedPrefixes = todayMatches
+        .map((k) => k.replace(/^sensor\./, "").replace(/_hours_today$/, ""))
+        .sort();
+      const cfgPrefix = this._cfg("entity_prefix");
+      const chips = detectedPrefixes
+        .map((p) => `<code style="background:var(--secondary-background-color);padding:2px 6px;border-radius:4px;font-size:0.9em">${p === "today" ? "(leave blank for this one)" : p}</code>`)
+        .join(" ");
+      const hint = detectedPrefixes.length
+        ? `<div style="margin-top:10px">Prefixes found on this HA install:<br>${chips}<br><span style="color:var(--secondary-text-color);font-size:0.9em">Paste one into <b>Entity prefix</b> in the visual editor. The <code>today</code> entry is the original / legacy instance — leave the prefix blank for it.</span></div>`
+        : `<div style="margin-top:10px;color:var(--secondary-text-color)">No Worktime Tracker sensors found. Check the integration is set up in Settings → Devices & Services.</div>`;
       this.shadowRoot.innerHTML = `
         <ha-card>
-          <div style="padding:16px;color:var(--primary-text-color)">
-            Worktime Tracker entities not found
-            ${this._cfg("entity_prefix") ? `for prefix "${this._cfg("entity_prefix")}"` : ""}.
-            Check Settings → Devices & Services → Worktime Tracker.
+          <div style="padding:16px;color:var(--primary-text-color);line-height:1.5">
+            <b>Worktime Tracker entities not found</b>${cfgPrefix ? ` for prefix <code style="background:var(--secondary-background-color);padding:2px 6px;border-radius:4px">${cfgPrefix}</code>` : ""}.
+            ${hint}
           </div>
         </ha-card>`;
       return;
@@ -650,10 +663,15 @@ class WorktimeTrackerCard extends HTMLElement {
       "wt-override",
     ].filter(Boolean).join(" ");
 
+    const detectedPrefixes = todayMatches
+      .map((k) => k.replace(/^sensor\./, "").replace(/_hours_today$/, ""))
+      .sort();
     const prefixWarning = missingPrefix ? `
       <div class="prefix-warning">
         <strong>Multiple instances detected.</strong>
-        Set <code>entity_prefix</code> on this card (visual editor → Entity prefix) to point it at one specific instance. Without it, actions route to the oldest instance only.
+        Set <code>entity_prefix</code> in the card's visual editor to
+        one of these values: ${detectedPrefixes.map((p) => `<code>${p === "today" ? "(blank)" : p}</code>`).join(", ")}.
+        Without it, actions route to the oldest instance only.
       </div>` : "";
 
     this.shadowRoot.innerHTML = `
