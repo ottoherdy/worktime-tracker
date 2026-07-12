@@ -408,7 +408,9 @@ class WorktimeTrackerCard extends HTMLElement {
       w?.state, (w?.attributes?.days || []).length, w?.attributes?.overtime,
       lw?.state, (lw?.attributes?.days || []).length, lw?.attributes?.overtime,
       m?.state, m?.attributes?.month, m?.attributes?.overtime,
+      m?.attributes?.avg_arrival, m?.attributes?.avg_departure,
       lm?.state, lm?.attributes?.month, lm?.attributes?.overtime,
+      lm?.attributes?.avg_arrival, lm?.attributes?.avg_departure,
       sw?.state,
       sun,
       this._lookupDate,
@@ -557,10 +559,14 @@ class WorktimeTrackerCard extends HTMLElement {
     const monthHours = monthState ? parseFloat(monthState.state) || 0 : 0;
     const monthOvertime = parseFloat(monthAttr.overtime) || 0;
     const monthLabel = monthAttr.month || "This month";
+    const monthAvgArr = monthAttr.avg_arrival || null;
+    const monthAvgDep = monthAttr.avg_departure || null;
 
     const lastMonthHours = lastMonthState ? parseFloat(lastMonthState.state) || 0 : 0;
     const lastMonthOvertime = parseFloat(lastMonthAttr.overtime) || 0;
     const lastMonthLabel = lastMonthAttr.month || "Last month";
+    const lastMonthAvgArr = lastMonthAttr.avg_arrival || null;
+    const lastMonthAvgDep = lastMonthAttr.avg_departure || null;
 
     const historyLimit = parseInt(this._cfg("history_limit"), 10) || 10;
     const recentAll = attr.recent_days || [];
@@ -730,8 +736,8 @@ class WorktimeTrackerCard extends HTMLElement {
               <div class="list">${lastWeekListHtml}</div>
             </section>` : ""}
 
-          ${showThisMonth ? this._renderMonthBlock(this._cfg("title_this_month"), monthLabel, monthHours, monthOvertime, timeFmt) : ""}
-          ${showLastMonth ? this._renderMonthBlock(this._cfg("title_last_month"), lastMonthLabel, lastMonthHours, lastMonthOvertime, timeFmt) : ""}
+          ${showThisMonth ? this._renderMonthBlock(this._cfg("title_this_month"), monthLabel, monthHours, monthOvertime, monthAvgArr, monthAvgDep, timeFmt) : ""}
+          ${showLastMonth ? this._renderMonthBlock(this._cfg("title_last_month"), lastMonthLabel, lastMonthHours, lastMonthOvertime, lastMonthAvgArr, lastMonthAvgDep, timeFmt) : ""}
 
           ${showHistory ? `
             <section class="section">
@@ -803,23 +809,22 @@ class WorktimeTrackerCard extends HTMLElement {
     return `<div class="actions ${cls}">${btns.join("")}</div>`;
   }
 
-  _renderMonthBlock(label, monthName, hours, overtime, timeFmt = "hm") {
+  _renderMonthBlock(label, monthName, hours, overtime, avgArr, avgDep, timeFmt = "hm") {
     const hoursTxt = timeFmt === "decimal"
       ? `${hours.toFixed(2)}h`
       : _fmtHours(hours, timeFmt);
+    const avgHtml = avgArr && avgDep
+      ? `<span class="sep-dot"></span>avg <b class="mono">${avgArr}<span class="sep">→</span>${avgDep}</b>`
+      : "";
     return `
       <section class="section">
         <div class="section-head">
           <div class="section-title">${label}<span class="title-meta mono">${monthName}</span></div>
-        </div>
-        <div class="month-card">
-          <div class="month-row">
-            <span class="month-k">Hours</span>
-            <span class="month-v mono">${hoursTxt}</span>
-          </div>
-          <div class="month-row">
-            <span class="month-k">Overtime</span>
-            <span class="month-v mono ${overtime >= 0 ? "pos" : "neg"}">${_fmtDelta(overtime, timeFmt)}</span>
+          <div class="section-total">
+            <span class="tot mono">${hoursTxt}</span>
+            <span class="sep-dot"></span>
+            <span class="ot mono ${overtime >= 0 ? "pos" : "neg"}">${_fmtDelta(overtime, timeFmt)}</span>
+            ${avgHtml}
           </div>
         </div>
       </section>`;

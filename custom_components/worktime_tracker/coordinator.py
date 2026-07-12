@@ -1247,6 +1247,48 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                 total += self.hours_worked_today()
         return round(total, 2)
 
+    def avg_arrival_departure_in_month(
+        self, year: int, month: int
+    ) -> tuple[str, str] | None:
+        """Average clock-in / clock-out time (HH:MM local) across every
+        day in the month that has both an arrival and a departure
+        logged. Returns None when no such day exists — sick / off /
+        flex / home days carry no times, so they're skipped naturally
+        via history-only iteration.
+        """
+        from calendar import monthrange
+        last_day = monthrange(year, month)[1]
+        start = date(year, month, 1)
+        end = date(year, month, last_day)
+        arrivals: list[int] = []
+        departures: list[int] = []
+        for e in self.history:
+            try:
+                d = date.fromisoformat(e["date"])
+            except Exception:  # pylint: disable=broad-except
+                continue
+            if not (start <= d <= end):
+                continue
+            arr = e.get("arrival")
+            dep = e.get("departure")
+            if not arr or not dep:
+                continue
+            try:
+                arr_local = dt_util.as_local(datetime.fromisoformat(arr))
+                dep_local = dt_util.as_local(datetime.fromisoformat(dep))
+            except Exception:  # pylint: disable=broad-except
+                continue
+            arrivals.append(arr_local.hour * 60 + arr_local.minute)
+            departures.append(dep_local.hour * 60 + dep_local.minute)
+        if not arrivals:
+            return None
+        avg_arr = sum(arrivals) // len(arrivals)
+        avg_dep = sum(departures) // len(departures)
+        return (
+            f"{avg_arr // 60:02d}:{avg_arr % 60:02d}",
+            f"{avg_dep // 60:02d}:{avg_dep % 60:02d}",
+        )
+
     def overtime_this_week(self) -> float:
         today = dt_util.now().date()
         monday = today - timedelta(days=today.weekday())
