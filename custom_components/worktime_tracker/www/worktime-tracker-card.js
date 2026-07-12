@@ -1390,6 +1390,7 @@ class WorktimeTrackerCard extends HTMLElement {
         font-weight: 500;
         color: var(--wt-ink);
         letter-spacing: -0.01em;
+        text-align: right;
       }
       .row .times .sep { color: var(--wt-muted-2); margin: 0 5px; font-weight: 400; }
       .row .hours {
