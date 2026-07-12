@@ -842,7 +842,7 @@ class WorktimeTrackerCard extends HTMLElement {
         return !(isOffDay && empty);
       });
     if (visibleDays.length === 0) {
-      return `<div class="row empty"><div class="day">—</div><div class="times">No data</div><div class="hours">—</div><div></div></div>`;
+      return `<div class="row empty"><div class="day">—</div><div class="hours">—</div><div class="times">No data</div><div></div></div>`;
     }
     return visibleDays.map(({ d, i }) => {
       const empty = d.type === "none" || (d.arrival === "—" && d.hours === 0);
@@ -868,8 +868,8 @@ class WorktimeTrackerCard extends HTMLElement {
       return `
         <div class="${rowClasses.join(" ")}" data-row="${i}">
           <div class="day">${d.weekday || "—"}<span class="date">${_isoToMMDD(d.date)}</span></div>
-          <div class="times">${timesHtml}</div>
           <div class="hours ${overClass}">${hoursHtml}</div>
+          <div class="times">${timesHtml}</div>
           ${editCell}
         </div>`;
     }).join("");
@@ -1372,7 +1372,7 @@ class WorktimeTrackerCard extends HTMLElement {
       }
       .row {
         display: grid;
-        grid-template-columns: 46px 1fr auto 24px;
+        grid-template-columns: 46px auto 1fr 24px;
         align-items: center;
         padding: 9px 14px;
         border-bottom: 1px solid var(--wt-line-2);
@@ -1396,7 +1396,7 @@ class WorktimeTrackerCard extends HTMLElement {
       .row .hours {
         font-family: 'Geist Mono', monospace; font-weight: 500;
         font-size: calc(15px * var(--wt-scale, 1));
-        text-align: right;
+        text-align: left;
       }
       .row .hours.over { color: var(--wt-warn); }
       .row .hours.under { color: var(--wt-ink); }
