@@ -1888,9 +1888,13 @@ class WorktimeTrackerCardEditor extends HTMLElement {
           <input id="ed-prefix" type="text" placeholder="e.g. worktime_tracker_person_2" value="${this._get("entity_prefix") || ""}">
         </div>
         <div class="hint">
-          Leave blank for the legacy/default instance. For additional
-          instances, set the full device slug — Developer Tools → States,
-          look for <code>sensor.&lt;slug&gt;_hours_today</code>.
+          On single-instance setups you can leave this blank. With
+          multiple instances, set it to that instance's slug (e.g.
+          <code>otto</code>, <code>ellen</code>) so the banner
+          disappears and service calls route to the right one. The
+          card auto-falls-back to legacy entity IDs if the unified
+          pattern doesn't resolve, so an early instance's entities
+          don't need to be renamed to match its slug.
         </div>
       </div>
 
