@@ -18,24 +18,27 @@
 
 const DOMAIN = "worktime_tracker";
 
-function _entities(prefix) {
+const LEGACY_ENTITIES = {
+  // The first-ever instance registered each sensor as its own
+  // device ("Today" / "This week" / …), so its entity IDs never
+  // picked up the instance name as a prefix. Renaming the instance
+  // later doesn't rewrite the frozen entity IDs, so we hardcode the
+  // legacy names and fall back to them when the unified pattern
+  // doesn't resolve.
+  today: "sensor.today_hours_today",
+  week: "sensor.this_week_hours_this_week",
+  last_week: "sensor.last_week_hours_last_week",
+  this_month: "sensor.this_month_hours_this_month",
+  last_month: "sensor.last_month_hours_last_month",
+  sw: "switch.today_auto_departure",
+};
+
+function _entities(prefix, hass) {
   const p = (prefix || "").trim();
-  if (!p) {
-    // Legacy layout — the first instance created its sensors before
-    // they were grouped under a single device, so each one lives on
-    // its own device slug ("Today" / "This week" / etc.).
-    return {
-      today: "sensor.today_hours_today",
-      week: "sensor.this_week_hours_this_week",
-      last_week: "sensor.last_week_hours_last_week",
-      this_month: "sensor.this_month_hours_this_month",
-      last_month: "sensor.last_month_hours_last_month",
-      sw: "switch.today_auto_departure",
-    };
-  }
+  if (!p) return LEGACY_ENTITIES;
   // New unified layout — every sensor on the same device, so the
   // prefix is the full device slug (e.g. "worktime_tracker_person_2").
-  return {
+  const unified = {
     today: `sensor.${p}_hours_today`,
     week: `sensor.${p}_hours_this_week`,
     last_week: `sensor.${p}_hours_last_week`,
@@ -43,6 +46,13 @@ function _entities(prefix) {
     last_month: `sensor.${p}_hours_last_month`,
     sw: `switch.${p}_auto_departure`,
   };
+  // If the user set a prefix matching their instance name but the
+  // sensors still live at the legacy paths (multi-instance setup
+  // where this instance was the first one created), fall back to
+  // the legacy IDs. Service calls still use the caller's prefix,
+  // so backend routing lands on the right coordinator.
+  if (hass && !hass.states[unified.today]) return LEGACY_ENTITIES;
+  return unified;
 }
 
 const DEFAULTS = {
@@ -285,7 +295,7 @@ class WorktimeTrackerCard extends HTMLElement {
   }
 
   _entityIds() {
-    return _entities(this._cfg("entity_prefix") || "");
+    return _entities(this._cfg("entity_prefix") || "", this._hass);
   }
 
   _callService(service, data = {}) {
