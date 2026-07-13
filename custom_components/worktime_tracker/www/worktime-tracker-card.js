@@ -408,7 +408,9 @@ class WorktimeTrackerCard extends HTMLElement {
       w?.state, (w?.attributes?.days || []).length, w?.attributes?.overtime,
       lw?.state, (lw?.attributes?.days || []).length, lw?.attributes?.overtime,
       m?.state, m?.attributes?.month, m?.attributes?.overtime,
+      m?.attributes?.avg_arrival, m?.attributes?.avg_departure,
       lm?.state, lm?.attributes?.month, lm?.attributes?.overtime,
+      lm?.attributes?.avg_arrival, lm?.attributes?.avg_departure,
       sw?.state,
       sun,
       this._lookupDate,
@@ -505,12 +507,25 @@ class WorktimeTrackerCard extends HTMLElement {
     const switchState = hass.states[ids.sw];
 
     if (!todayState) {
+      // Extract the actual prefixes present in this HA install so the
+      // user can copy one verbatim instead of guessing. "today" here
+      // means the legacy first-ever instance (its sensor lives at
+      // sensor.today_hours_today, no per-instance device slug).
+      const detectedPrefixes = todayMatches
+        .map((k) => k.replace(/^sensor\./, "").replace(/_hours_today$/, ""))
+        .sort();
+      const cfgPrefix = this._cfg("entity_prefix");
+      const chips = detectedPrefixes
+        .map((p) => `<code style="background:var(--secondary-background-color);padding:2px 6px;border-radius:4px;font-size:0.9em">${p === "today" ? "(leave blank for this one)" : p}</code>`)
+        .join(" ");
+      const hint = detectedPrefixes.length
+        ? `<div style="margin-top:10px">Prefixes found on this HA install:<br>${chips}<br><span style="color:var(--secondary-text-color);font-size:0.9em">Paste one into <b>Entity prefix</b> in the visual editor. The <code>today</code> entry is the original / legacy instance — leave the prefix blank for it.</span></div>`
+        : `<div style="margin-top:10px;color:var(--secondary-text-color)">No Worktime Tracker sensors found. Check the integration is set up in Settings → Devices & Services.</div>`;
       this.shadowRoot.innerHTML = `
         <ha-card>
-          <div style="padding:16px;color:var(--primary-text-color)">
-            Worktime Tracker entities not found
-            ${this._cfg("entity_prefix") ? `for prefix "${this._cfg("entity_prefix")}"` : ""}.
-            Check Settings → Devices & Services → Worktime Tracker.
+          <div style="padding:16px;color:var(--primary-text-color);line-height:1.5">
+            <b>Worktime Tracker entities not found</b>${cfgPrefix ? ` for prefix <code style="background:var(--secondary-background-color);padding:2px 6px;border-radius:4px">${cfgPrefix}</code>` : ""}.
+            ${hint}
           </div>
         </ha-card>`;
       return;
@@ -557,10 +572,14 @@ class WorktimeTrackerCard extends HTMLElement {
     const monthHours = monthState ? parseFloat(monthState.state) || 0 : 0;
     const monthOvertime = parseFloat(monthAttr.overtime) || 0;
     const monthLabel = monthAttr.month || "This month";
+    const monthAvgArr = monthAttr.avg_arrival || null;
+    const monthAvgDep = monthAttr.avg_departure || null;
 
     const lastMonthHours = lastMonthState ? parseFloat(lastMonthState.state) || 0 : 0;
     const lastMonthOvertime = parseFloat(lastMonthAttr.overtime) || 0;
     const lastMonthLabel = lastMonthAttr.month || "Last month";
+    const lastMonthAvgArr = lastMonthAttr.avg_arrival || null;
+    const lastMonthAvgDep = lastMonthAttr.avg_departure || null;
 
     const historyLimit = parseInt(this._cfg("history_limit"), 10) || 10;
     const recentAll = attr.recent_days || [];
@@ -644,10 +663,15 @@ class WorktimeTrackerCard extends HTMLElement {
       "wt-override",
     ].filter(Boolean).join(" ");
 
+    const detectedPrefixes = todayMatches
+      .map((k) => k.replace(/^sensor\./, "").replace(/_hours_today$/, ""))
+      .sort();
     const prefixWarning = missingPrefix ? `
       <div class="prefix-warning">
         <strong>Multiple instances detected.</strong>
-        Set <code>entity_prefix</code> on this card (visual editor → Entity prefix) to point it at one specific instance. Without it, actions route to the oldest instance only.
+        Set <code>entity_prefix</code> in the card's visual editor to
+        one of these values: ${detectedPrefixes.map((p) => `<code>${p === "today" ? "(blank)" : p}</code>`).join(", ")}.
+        Without it, actions route to the oldest instance only.
       </div>` : "";
 
     this.shadowRoot.innerHTML = `
@@ -730,8 +754,8 @@ class WorktimeTrackerCard extends HTMLElement {
               <div class="list">${lastWeekListHtml}</div>
             </section>` : ""}
 
-          ${showThisMonth ? this._renderMonthBlock(this._cfg("title_this_month"), monthLabel, monthHours, monthOvertime, timeFmt) : ""}
-          ${showLastMonth ? this._renderMonthBlock(this._cfg("title_last_month"), lastMonthLabel, lastMonthHours, lastMonthOvertime, timeFmt) : ""}
+          ${showThisMonth ? this._renderMonthBlock(this._cfg("title_this_month"), monthLabel, monthHours, monthOvertime, monthAvgArr, monthAvgDep, timeFmt) : ""}
+          ${showLastMonth ? this._renderMonthBlock(this._cfg("title_last_month"), lastMonthLabel, lastMonthHours, lastMonthOvertime, lastMonthAvgArr, lastMonthAvgDep, timeFmt) : ""}
 
           ${showHistory ? `
             <section class="section">
@@ -803,23 +827,22 @@ class WorktimeTrackerCard extends HTMLElement {
     return `<div class="actions ${cls}">${btns.join("")}</div>`;
   }
 
-  _renderMonthBlock(label, monthName, hours, overtime, timeFmt = "hm") {
+  _renderMonthBlock(label, monthName, hours, overtime, avgArr, avgDep, timeFmt = "hm") {
     const hoursTxt = timeFmt === "decimal"
       ? `${hours.toFixed(2)}h`
       : _fmtHours(hours, timeFmt);
+    const avgHtml = avgArr && avgDep
+      ? `<span class="sep-dot"></span>avg <b class="mono">${avgArr}<span class="sep">→</span>${avgDep}</b>`
+      : "";
     return `
       <section class="section">
         <div class="section-head">
           <div class="section-title">${label}<span class="title-meta mono">${monthName}</span></div>
-        </div>
-        <div class="month-card">
-          <div class="month-row">
-            <span class="month-k">Hours</span>
-            <span class="month-v mono">${hoursTxt}</span>
-          </div>
-          <div class="month-row">
-            <span class="month-k">Overtime</span>
-            <span class="month-v mono ${overtime >= 0 ? "pos" : "neg"}">${_fmtDelta(overtime, timeFmt)}</span>
+          <div class="section-total">
+            <span class="tot mono">${hoursTxt}</span>
+            <span class="sep-dot"></span>
+            <span class="ot mono ${overtime >= 0 ? "pos" : "neg"}">${_fmtDelta(overtime, timeFmt)}</span>
+            ${avgHtml}
           </div>
         </div>
       </section>`;
@@ -842,7 +865,7 @@ class WorktimeTrackerCard extends HTMLElement {
         return !(isOffDay && empty);
       });
     if (visibleDays.length === 0) {
-      return `<div class="row empty"><div class="day">—</div><div class="times">No data</div><div class="hours">—</div><div></div></div>`;
+      return `<div class="row empty"><div class="day">—</div><div class="hours">—</div><div class="times">No data</div><div></div></div>`;
     }
     return visibleDays.map(({ d, i }) => {
       const empty = d.type === "none" || (d.arrival === "—" && d.hours === 0);
@@ -868,8 +891,8 @@ class WorktimeTrackerCard extends HTMLElement {
       return `
         <div class="${rowClasses.join(" ")}" data-row="${i}">
           <div class="day">${d.weekday || "—"}<span class="date">${_isoToMMDD(d.date)}</span></div>
-          <div class="times">${timesHtml}</div>
           <div class="hours ${overClass}">${hoursHtml}</div>
+          <div class="times">${timesHtml}</div>
           ${editCell}
         </div>`;
     }).join("");
@@ -1372,7 +1395,7 @@ class WorktimeTrackerCard extends HTMLElement {
       }
       .row {
         display: grid;
-        grid-template-columns: 46px 1fr auto 24px;
+        grid-template-columns: 46px auto 1fr 24px;
         align-items: center;
         padding: 9px 14px;
         border-bottom: 1px solid var(--wt-line-2);
@@ -1390,12 +1413,13 @@ class WorktimeTrackerCard extends HTMLElement {
         font-weight: 500;
         color: var(--wt-ink);
         letter-spacing: -0.01em;
+        text-align: right;
       }
       .row .times .sep { color: var(--wt-muted-2); margin: 0 5px; font-weight: 400; }
       .row .hours {
         font-family: 'Geist Mono', monospace; font-weight: 500;
         font-size: calc(15px * var(--wt-scale, 1));
-        text-align: right;
+        text-align: left;
       }
       .row .hours.over { color: var(--wt-warn); }
       .row .hours.under { color: var(--wt-ink); }

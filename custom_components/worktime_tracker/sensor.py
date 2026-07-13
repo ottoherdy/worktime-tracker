@@ -227,11 +227,14 @@ class ThisMonthSensor(_Base):
     def extra_state_attributes(self) -> dict[str, Any]:
         today = dt_util.now().date()
         hours = self.coordinator.hours_worked_in_month(today.year, today.month)
+        avg = self.coordinator.avg_arrival_departure_in_month(today.year, today.month)
         return {
             "hours": hours,
             "human_readable": _hours_to_human(hours),
             "overtime": self.coordinator.overtime_this_month(),
             "month": self.coordinator.month_name(0),
+            "avg_arrival": avg[0] if avg else None,
+            "avg_departure": avg[1] if avg else None,
         }
 
 
@@ -262,9 +265,12 @@ class LastMonthSensor(_Base):
         else:
             year, month = today.year, today.month - 1
         hours = self.coordinator.hours_worked_in_month(year, month)
+        avg = self.coordinator.avg_arrival_departure_in_month(year, month)
         return {
             "hours": hours,
             "human_readable": _hours_to_human(hours),
             "overtime": self.coordinator.overtime_last_month(),
             "month": self.coordinator.month_name(1),
+            "avg_arrival": avg[0] if avg else None,
+            "avg_departure": avg[1] if avg else None,
         }
