@@ -86,7 +86,9 @@ from .const import (
     DAY_TYPE_HOME,
     DAY_TYPE_NORMAL,
     DAY_TYPE_OFF,
+    DAY_TYPE_RED_DAY,
     DAY_TYPE_SICK,
+    DAY_TYPE_SQUEEZE_DAY,
     DAY_TYPE_VACATION,
     DEFAULT_ARRIVAL_MARGIN_MINUTES,
     DEFAULT_AUTO_DEPARTURE_ENABLED,
@@ -889,13 +891,18 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             local = datetime(ref_date.year, ref_date.month, ref_date.day, h, m)
             return dt_util.as_utc(dt_util.as_local(local))
 
-        if day_type in (DAY_TYPE_SICK, DAY_TYPE_OFF, DAY_TYPE_FLEX, DAY_TYPE_HOME, DAY_TYPE_VACATION):
-            if day_type in (DAY_TYPE_SICK, DAY_TYPE_HOME, DAY_TYPE_VACATION):
-                # Sick / home / paid vacation default to a full net
-                # workday's worth of credit — they represent a whole
-                # day away from the office where you're still on the
-                # clock (paid). Override with the hours argument for
-                # partial days (e.g. half-day sick: pass hours=4).
+        paid_leave_types = (
+            DAY_TYPE_SICK, DAY_TYPE_HOME, DAY_TYPE_VACATION,
+            DAY_TYPE_RED_DAY, DAY_TYPE_SQUEEZE_DAY,
+        )
+        if day_type in (DAY_TYPE_OFF, DAY_TYPE_FLEX) + paid_leave_types:
+            if day_type in paid_leave_types:
+                # Sick / home / vacation / red day / squeeze day
+                # default to a full net workday's worth of credit —
+                # they represent a whole day away from the office
+                # where you're still on the clock (paid). Override
+                # with the hours argument for partial days (e.g.
+                # half-day sick: pass hours=4).
                 default_hours = float(
                     self.options.get(CONF_WORKDAY_HOURS, DEFAULT_WORKDAY_HOURS)
                 ) - self.lunch_deduction
@@ -914,6 +921,13 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                 "hours": round(leave_hours, 2),
                 "edited": True,
             }
+            # Vacation / red day / squeeze day were away-from-work
+            # by definition — mark lunch explicitly as "no" so the
+            # Sheets export shows "no" instead of "unknown". Sick /
+            # home stay unset since the user might still have taken
+            # (or skipped) lunch.
+            if day_type in (DAY_TYPE_VACATION, DAY_TYPE_RED_DAY, DAY_TYPE_SQUEEZE_DAY):
+                leave_entry["lunch"] = LUNCH_NO
             replaced = False
             for i, e in enumerate(self.leave_records):
                 if e.get("date") == target_iso:
@@ -1732,6 +1746,8 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                 else "Flex" if day_type == DAY_TYPE_FLEX
                 else "Home" if day_type == DAY_TYPE_HOME
                 else "Vacation" if day_type == DAY_TYPE_VACATION
+                else "Red day" if day_type == DAY_TYPE_RED_DAY
+                else "Squeeze day" if day_type == DAY_TYPE_SQUEEZE_DAY
                 else "Normal"
             ),
             "Arrival": self._format_time(arrival),
