@@ -224,6 +224,16 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         arrival = call.data.get("arrival") or None
         departure = call.data.get("departure") or None
         lunch = call.data.get("lunch") or None
+        # Top-up: split a normal day so part of it counts as flex /
+        # sick / off / etc. Passing an empty string clears the field.
+        raw_top_up_type = call.data.get("top_up_type")
+        top_up_type = raw_top_up_type if raw_top_up_type is not None else None
+        raw_top_up_hours = call.data.get("top_up_hours")
+        top_up_hours = (
+            float(raw_top_up_hours)
+            if raw_top_up_hours not in (None, "")
+            else (0.0 if raw_top_up_hours == "" else None)
+        )
 
         prefix = _prefix(call)
         coords = _get_coordinators(hass, prefix)
@@ -264,6 +274,8 @@ async def _async_register_services(hass: HomeAssistant) -> None:
                     lunch=lunch,
                     day_type=day_type,
                     hours=hours,
+                    top_up_type=top_up_type,
+                    top_up_hours=top_up_hours,
                 )
 
     async def handle_set_period(call: ServiceCall) -> None:
@@ -400,6 +412,8 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         vol.Optional("lunch"): vol.Any(None, "", vol.In([LUNCH_YES, LUNCH_NO, LUNCH_UNKNOWN])),
         vol.Optional("type"): vol.Any(None, "", vol.In(["normal", "sick", "off", "flex", "home", "vacation", "red_day", "squeeze_day"])),
         vol.Optional("hours"): vol.Any(None, "", vol.Coerce(float)),
+        vol.Optional("top_up_type"): vol.Any(None, "", vol.In(["", "flex", "sick", "off", "home", "vacation", "red_day", "squeeze_day"])),
+        vol.Optional("top_up_hours"): vol.Any(None, "", vol.Coerce(float)),
         vol.Optional("entry_prefix"): cv.string,
     })
     hass.services.async_register(
