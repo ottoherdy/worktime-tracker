@@ -400,12 +400,16 @@ class WorktimeTrackerCard extends HTMLElement {
     this._editing = null;
     this._stateSig = "";
     this._lookupDate = _todayIso();
-    // Back-navigation offsets for the "Last week" / "Last month"
-    // blocks. 1 = the section's current default (last week / last
-    // month), 2 = one further back, etc. Capped at ~26 weeks / 6
-    // months since history storage tops out at 180 days.
-    this._weekBack = 1;
-    this._monthBack = 1;
+    // Independent back-navigation offsets for each of the four
+    // week/month blocks. 0 = current, 1 = one back, etc. Both blocks
+    // in a pair can be paged separately so the user can, say, put
+    // week 25 in the top block and week 30 in the bottom for a
+    // side-by-side compare. Capped at ~26 weeks / 6 months since
+    // history storage tops out at 180 days.
+    this._thisWeekBack = 0;
+    this._lastWeekBack = 1;
+    this._thisMonthBack = 0;
+    this._lastMonthBack = 1;
     // Semester period modal state (null when closed).
     this._periodModal = null;
   }
@@ -579,7 +583,8 @@ class WorktimeTrackerCard extends HTMLElement {
       sw?.state,
       sun,
       this._lookupDate,
-      this._weekBack, this._monthBack,
+      this._thisWeekBack, this._lastWeekBack,
+      this._thisMonthBack, this._lastMonthBack,
       this._periodModal ? "period" : "",
     ].join("|");
   }
@@ -724,12 +729,6 @@ class WorktimeTrackerCard extends HTMLElement {
     const autoOutTimeRaw = attr.auto_departure_time || "15:00";
     const autoOutTime = autoOutTimeRaw.slice(0, 5);
 
-    const weekHours = weekState ? parseFloat(weekState.state) || 0 : 0;
-    const weekDays = weekAttr.days || [];
-    const weekFilled = weekDays.filter((d) => d && d.type !== "none" && parseFloat(d.hours) > 0);
-    const weekAvgH = weekFilled.length ? weekHours / weekFilled.length : 0;
-    const weekOvertime = parseFloat(weekAttr.overtime) || 0;
-
     // Extended history for back-navigation. Kept on the month sensor
     // so a 180-entry attribute doesn't ride along with the today
     // sensor's 30-second tick.
@@ -740,36 +739,57 @@ class WorktimeTrackerCard extends HTMLElement {
     // Cap back-nav to the data window the sensor exposes (~180 days).
     const maxWeekBack = 26;
     const maxMonthBack = 6;
-    if (this._weekBack > maxWeekBack) this._weekBack = maxWeekBack;
-    if (this._weekBack < 1) this._weekBack = 1;
-    if (this._monthBack > maxMonthBack) this._monthBack = maxMonthBack;
-    if (this._monthBack < 1) this._monthBack = 1;
+    for (const k of ["_thisWeekBack", "_lastWeekBack"]) {
+      if (this[k] < 0) this[k] = 0;
+      if (this[k] > maxWeekBack) this[k] = maxWeekBack;
+    }
+    for (const k of ["_thisMonthBack", "_lastMonthBack"]) {
+      if (this[k] < 0) this[k] = 0;
+      if (this[k] > maxMonthBack) this[k] = maxMonthBack;
+    }
 
-    const lastWeekMonday = _mondayNWeeksBack(this._weekBack);
-    const lastWeekSummary = _weekSummary(allDays, lastWeekMonday, workDays, monthDailyTarget);
-    const lastWeekHours = lastWeekSummary.totalHours;
-    const lastWeekOvertime = lastWeekSummary.overtime;
-    const lastWeekFilled = lastWeekSummary.days.filter((d) => d && d.type !== "none" && parseFloat(d.hours) > 0);
-    const lastWeekAvgH = lastWeekSummary.avgHours;
-    const lastWeekIsoWeek = _isoWeek(lastWeekMonday);
-    const lastWeekTitle = this._weekBack === 1
-      ? (this._cfg("title_last_week") || "Last week")
-      : `Week ${lastWeekIsoWeek}`;
-    const lastWeekSubtitle = this._weekBack === 1 ? "" : `${this._weekBack} weeks ago`;
+    const makeWeekBlock = (weeksBack, defaultTitleKey, defaultTitleFallback) => {
+      const monday = _mondayNWeeksBack(weeksBack);
+      const summary = _weekSummary(allDays, monday, workDays, monthDailyTarget);
+      const filled = summary.days.filter((d) => d && d.type !== "none" && parseFloat(d.hours) > 0);
+      const isoWeek = _isoWeek(monday);
+      const title = weeksBack === 0
+        ? (this._cfg(defaultTitleKey) || defaultTitleFallback)
+        : `Week ${isoWeek}`;
+      let subtitle = "";
+      if (weeksBack === 1) subtitle = "last week";
+      else if (weeksBack > 1) subtitle = `${weeksBack} weeks ago`;
+      return {
+        summary,
+        filled,
+        title,
+        subtitle,
+        weeksBack,
+        avgH: summary.avgHours,
+      };
+    };
 
-    const monthHours = monthState ? parseFloat(monthState.state) || 0 : 0;
-    const monthOvertime = parseFloat(monthAttr.overtime) || 0;
-    const monthLabel = monthAttr.month || "This month";
-    const monthAvgArr = monthAttr.avg_arrival || null;
-    const monthAvgDep = monthAttr.avg_departure || null;
+    const makeMonthBlock = (monthsBack) => {
+      const start = _monthStartNMonthsBack(monthsBack);
+      const summary = _monthSummary(allDays, start, workDays, monthDailyTarget);
+      // For the current month we prefer the server-side overtime
+      // number (which knows about the elapsed workday count including
+      // in-progress today), falling back to the client-side calc for
+      // any month the server doesn't have a matching sensor for.
+      const overtime = monthsBack === 0
+        ? (parseFloat(monthAttr.overtime) || summary.overtime)
+        : summary.overtime;
+      return {
+        summary,
+        overtime,
+        monthsBack,
+      };
+    };
 
-    const lastMonthStart = _monthStartNMonthsBack(this._monthBack);
-    const lastMonthSummary = _monthSummary(allDays, lastMonthStart, workDays, monthDailyTarget);
-    const lastMonthHours = lastMonthSummary.totalHours;
-    const lastMonthOvertime = lastMonthSummary.overtime;
-    const lastMonthLabel = lastMonthSummary.monthLabel;
-    const lastMonthAvgArr = lastMonthSummary.avgArrival;
-    const lastMonthAvgDep = lastMonthSummary.avgDeparture;
+    const thisWeekBlock = makeWeekBlock(this._thisWeekBack, "title_this_week", "This week");
+    const lastWeekBlock = makeWeekBlock(this._lastWeekBack, "title_last_week", "Last week");
+    const thisMonthBlock = makeMonthBlock(this._thisMonthBack);
+    const lastMonthBlock = makeMonthBlock(this._lastMonthBack);
 
     const historyLimit = parseInt(this._cfg("history_limit"), 10) || 10;
     const recentAll = attr.recent_days || [];
@@ -803,8 +823,8 @@ class WorktimeTrackerCard extends HTMLElement {
     const todayIso = _todayIso();
     if (recentAll.length) lookupPool.push(...recentAll);
     if (allDays.length) lookupPool.push(...allDays);
-    for (const wd of weekDays) if (wd?.date) lookupPool.push(wd);
-    for (const wd of lastWeekSummary.days) if (wd?.date) lookupPool.push(wd);
+    for (const wd of thisWeekBlock.summary.days) if (wd?.date) lookupPool.push(wd);
+    for (const wd of lastWeekBlock.summary.days) if (wd?.date) lookupPool.push(wd);
     if (attr.status && (attr.arrival || hours > 0)) {
       lookupPool.push({
         date: todayIso,
@@ -818,8 +838,8 @@ class WorktimeTrackerCard extends HTMLElement {
     }
 
     this._dayTables = {
-      this_week: weekDays,
-      last_week: lastWeekSummary.days,
+      this_week: thisWeekBlock.summary.days,
+      last_week: lastWeekBlock.summary.days,
       history: history,
       lookup: lookupPool,
     };
@@ -840,8 +860,8 @@ class WorktimeTrackerCard extends HTMLElement {
           : `<span class="dot"></span><span class="delta under">−${_fmtHours(target - hours, timeFmt)} to go</span>`)
       : "";
 
-    const weekListHtml = this._renderWeekList(weekDays, target, timeFmt);
-    const lastWeekListHtml = this._renderWeekList(lastWeekSummary.days, target, timeFmt);
+    const weekListHtml = this._renderWeekList(thisWeekBlock.summary.days, target, timeFmt);
+    const lastWeekListHtml = this._renderWeekList(lastWeekBlock.summary.days, target, timeFmt);
     const historyListHtml = this._renderHistoryList(history, target, timeFmt);
     const lookupBoxHtml = this._renderLookupBox(lookupPool, target, timeFmt);
 
@@ -917,51 +937,28 @@ class WorktimeTrackerCard extends HTMLElement {
               ${this._renderTodayActions()}
             </section>` : ""}
 
-          ${showThisWeek ? `
-            <section class="section">
-              <div class="section-head">
-                <div class="section-title">${this._cfg("title_this_week")}</div>
-                <div class="section-total">
-                  <span class="tot mono">${_fmtHours(weekHours, timeFmt)}</span>
-                  <span class="sep-dot"></span>
-                  <span class="ot mono ${weekOvertime >= 0 ? "pos" : "neg"}">${_fmtDelta(weekOvertime, timeFmt)}</span>
-                  <span class="sep-dot"></span>
-                  ${weekFilled.length} ${weekFilled.length === 1 ? "day" : "days"} · avg <b class="mono">${_fmtHours(weekAvgH, timeFmt)}</b>
-                </div>
-              </div>
-              <div class="list">${weekListHtml}</div>
-            </section>` : ""}
+          ${showThisWeek ? this._renderWeekBlock(thisWeekBlock, weekListHtml, "this", timeFmt) : ""}
+          ${showLastWeek ? this._renderWeekBlock(lastWeekBlock, lastWeekListHtml, "last", timeFmt) : ""}
 
-          ${showLastWeek ? `
-            <section class="section">
-              <div class="section-head">
-                <div class="section-title">
-                  <button class="nav-arrow" id="week-back" title="Older week">◀</button>
-                  <span>${lastWeekTitle}</span>
-                  <button class="nav-arrow" id="week-fwd" title="Newer week" ${this._weekBack <= 1 ? "disabled" : ""}>▶</button>
-                  ${lastWeekSubtitle ? `<span class="title-meta mono">${lastWeekSubtitle}</span>` : ""}
-                </div>
-                <div class="section-total">
-                  <span class="tot mono">${_fmtHours(lastWeekHours, timeFmt)}</span>
-                  <span class="sep-dot"></span>
-                  <span class="ot mono ${lastWeekOvertime >= 0 ? "pos" : "neg"}">${_fmtDelta(lastWeekOvertime, timeFmt)}</span>
-                  <span class="sep-dot"></span>
-                  ${lastWeekFilled.length} ${lastWeekFilled.length === 1 ? "day" : "days"} · avg <b class="mono">${_fmtHours(lastWeekAvgH, timeFmt)}</b>
-                </div>
-              </div>
-              <div class="list">${lastWeekListHtml}</div>
-            </section>` : ""}
-
-          ${showThisMonth ? this._renderMonthBlock(this._cfg("title_this_month"), monthLabel, monthHours, monthOvertime, monthAvgArr, monthAvgDep, timeFmt) : ""}
-          ${showLastMonth ? this._renderMonthBlock(
-            this._cfg("title_last_month"),
-            lastMonthLabel,
-            lastMonthHours,
-            lastMonthOvertime,
-            lastMonthAvgArr,
-            lastMonthAvgDep,
+          ${showThisMonth ? this._renderMonthBlock(
+            this._thisMonthBack === 0 ? (this._cfg("title_this_month") || "This month") : thisMonthBlock.summary.monthLabel,
+            this._thisMonthBack === 0 ? thisMonthBlock.summary.monthLabel : (this._thisMonthBack === 1 ? "last month" : `${this._thisMonthBack} months ago`),
+            thisMonthBlock.summary.totalHours,
+            thisMonthBlock.overtime,
+            thisMonthBlock.summary.avgArrival,
+            thisMonthBlock.summary.avgDeparture,
             timeFmt,
-            { showNav: true, monthBack: this._monthBack, maxMonthBack: maxMonthBack }
+            { showNav: true, which: "this", monthBack: this._thisMonthBack }
+          ) : ""}
+          ${showLastMonth ? this._renderMonthBlock(
+            this._lastMonthBack === 1 ? (this._cfg("title_last_month") || "Last month") : lastMonthBlock.summary.monthLabel,
+            this._lastMonthBack === 1 ? lastMonthBlock.summary.monthLabel : (this._lastMonthBack === 0 ? "current month" : `${this._lastMonthBack} months ago`),
+            lastMonthBlock.summary.totalHours,
+            lastMonthBlock.overtime,
+            lastMonthBlock.summary.avgArrival,
+            lastMonthBlock.summary.avgDeparture,
+            timeFmt,
+            { showNav: true, which: "last", monthBack: this._lastMonthBack }
           ) : ""}
 
           ${showHistory ? `
@@ -1035,6 +1032,33 @@ class WorktimeTrackerCard extends HTMLElement {
     return `<div class="actions ${cls}">${btns.join("")}</div>`;
   }
 
+  _renderWeekBlock(block, listHtml, which, timeFmt = "hm") {
+    // "which" is "this" or "last" — used to key the nav buttons so
+    // each block's arrows fire the right handler. Both blocks share
+    // the same visual template so the two week rows read as a pair.
+    const backId = `week-back-${which}`;
+    const fwdId = `week-fwd-${which}`;
+    return `
+      <section class="section">
+        <div class="section-head">
+          <div class="section-title">
+            <button class="nav-arrow" id="${backId}" title="Older week">◀</button>
+            <span>${block.title}</span>
+            <button class="nav-arrow" id="${fwdId}" title="Newer week" ${block.weeksBack <= 0 ? "disabled" : ""}>▶</button>
+            ${block.subtitle ? `<span class="title-meta mono">${block.subtitle}</span>` : ""}
+          </div>
+          <div class="section-total">
+            <span class="tot mono">${_fmtHours(block.summary.totalHours, timeFmt)}</span>
+            <span class="sep-dot"></span>
+            <span class="ot mono ${block.summary.overtime >= 0 ? "pos" : "neg"}">${_fmtDelta(block.summary.overtime, timeFmt)}</span>
+            <span class="sep-dot"></span>
+            ${block.filled.length} ${block.filled.length === 1 ? "day" : "days"} · avg <b class="mono">${_fmtHours(block.avgH, timeFmt)}</b>
+          </div>
+        </div>
+        <div class="list">${listHtml}</div>
+      </section>`;
+  }
+
   _renderMonthBlock(label, monthName, hours, overtime, avgArr, avgDep, timeFmt = "hm", nav = null) {
     const hoursTxt = timeFmt === "decimal"
       ? `${hours.toFixed(2)}h`
@@ -1042,11 +1066,14 @@ class WorktimeTrackerCard extends HTMLElement {
     const avgHtml = avgArr && avgDep
       ? `<span class="sep-dot"></span>avg <b class="mono">${avgArr}<span class="sep">→</span>${avgDep}</b>`
       : "";
+    const which = nav?.which || "last";
+    const backId = `month-back-${which}`;
+    const fwdId = `month-fwd-${which}`;
     const titleHtml = nav && nav.showNav
       ? `
-          <button class="nav-arrow" id="month-back" title="Older month">◀</button>
+          <button class="nav-arrow" id="${backId}" title="Older month">◀</button>
           <span>${label}</span>
-          <button class="nav-arrow" id="month-fwd" title="Newer month" ${nav.monthBack <= 1 ? "disabled" : ""}>▶</button>
+          <button class="nav-arrow" id="${fwdId}" title="Newer month" ${nav.monthBack <= 0 ? "disabled" : ""}>▶</button>
           <span class="title-meta mono">${monthName}</span>`
       : `${label}<span class="title-meta mono">${monthName}</span>`;
     return `
@@ -1383,33 +1410,27 @@ class WorktimeTrackerCard extends HTMLElement {
       });
     }
 
-    // Back-nav pilar för Last week / Last month. Uppdaterar bara
-    // motsvarande offset och tvingar en re-render — datan är redan
-    // klientsidig så inget nätverksanrop behövs.
-    $("week-back")?.addEventListener("click", () => {
-      this._weekBack += 1;
-      this._stateSig = "";
-      this._render();
-    });
-    $("week-fwd")?.addEventListener("click", () => {
-      if (this._weekBack > 1) {
-        this._weekBack -= 1;
+    // Back-nav pilar för alla fyra block. Uppdaterar bara motsvarande
+    // offset och tvingar en re-render — datan är redan klientsidig
+    // så inget nätverksanrop behövs.
+    const nav = (backId, fwdId, key, minVal) => {
+      $(backId)?.addEventListener("click", () => {
+        this[key] += 1;
         this._stateSig = "";
         this._render();
-      }
-    });
-    $("month-back")?.addEventListener("click", () => {
-      this._monthBack += 1;
-      this._stateSig = "";
-      this._render();
-    });
-    $("month-fwd")?.addEventListener("click", () => {
-      if (this._monthBack > 1) {
-        this._monthBack -= 1;
-        this._stateSig = "";
-        this._render();
-      }
-    });
+      });
+      $(fwdId)?.addEventListener("click", () => {
+        if (this[key] > minVal) {
+          this[key] -= 1;
+          this._stateSig = "";
+          this._render();
+        }
+      });
+    };
+    nav("week-back-this", "week-fwd-this", "_thisWeekBack", 0);
+    nav("week-back-last", "week-fwd-last", "_lastWeekBack", 0);
+    nav("month-back-this", "month-fwd-this", "_thisMonthBack", 0);
+    nav("month-back-last", "month-fwd-last", "_lastMonthBack", 0);
 
     $("lookup-date")?.addEventListener("change", (ev) => {
       this._lookupDate = ev.target.value || _todayIso();
