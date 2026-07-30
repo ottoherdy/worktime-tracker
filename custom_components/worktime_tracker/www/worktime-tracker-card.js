@@ -478,7 +478,7 @@ class WorktimeTrackerCard extends HTMLElement {
     // day.hours would force-save the existing total even when the user
     // changed the times, and pre-filling with 0 (the initial value on a
     // freshly Added day) silently overrode the recompute with 0h.
-    const isLeaveType = ["sick", "off", "flex", "home", "vacation"].includes(dayType);
+    const isLeaveType = ["sick", "off", "flex", "home", "vacation", "red_day", "squeeze_day"].includes(dayType);
     this._editing = {
       date: day.date,
       arrival: _timeForInput(day.arrival),
@@ -1100,6 +1100,8 @@ class WorktimeTrackerCard extends HTMLElement {
         : d.type === "flex" ? "flex"
         : d.type === "home" ? "home"
         : d.type === "vacation" ? "vac"
+        : d.type === "red_day" ? "röd"
+        : d.type === "squeeze_day" ? "kläm"
         : _fmtHours(hoursNum, timeFmt);
       const editCell = editable
         ? `<div class="edit" data-row="${i}" title="Edit">${ICON.pencil}</div>`
@@ -1127,6 +1129,8 @@ class WorktimeTrackerCard extends HTMLElement {
         : d.type === "flex" ? "flex"
         : d.type === "home" ? "home"
         : d.type === "vacation" ? "vac"
+        : d.type === "red_day" ? "röd"
+        : d.type === "squeeze_day" ? "kläm"
         : _fmtHours(hoursNum, timeFmt);
       return `
         <div class="history-row ${editClass}" data-row="${i}">
@@ -1163,11 +1167,13 @@ class WorktimeTrackerCard extends HTMLElement {
         : match.type === "flex" ? "Flex"
         : match.type === "home" ? "Work from home"
         : match.type === "vacation" ? "Vacation"
+        : match.type === "red_day" ? "Red day"
+        : match.type === "squeeze_day" ? "Squeeze day"
         : "Normal";
       const arrival = match.arrival || "—";
       const departure = match.departure || "—";
       const lunch = _lunchLabel(match.lunch);
-      const isLeaveType = ["sick", "off", "flex", "home", "vacation"].includes(match.type);
+      const isLeaveType = ["sick", "off", "flex", "home", "vacation", "red_day", "squeeze_day"].includes(match.type);
       const hoursTxt = isLeaveType
         ? `${hoursNum.toFixed(2)}h`
         : _fmtHours(hoursNum, timeFmt);
@@ -1219,6 +1225,8 @@ class WorktimeTrackerCard extends HTMLElement {
               <option value="sick" ${e.type === "sick" ? "selected" : ""}>Sick</option>
               <option value="flex" ${e.type === "flex" ? "selected" : ""}>Flex</option>
               <option value="vacation" ${e.type === "vacation" ? "selected" : ""}>Vacation (semester)</option>
+              <option value="red_day" ${e.type === "red_day" ? "selected" : ""}>Red day (röddag)</option>
+              <option value="squeeze_day" ${e.type === "squeeze_day" ? "selected" : ""}>Squeeze day (klämdag)</option>
               <option value="off" ${e.type === "off" ? "selected" : ""}>Off (unpaid)</option>
             </select>
           </div>
@@ -1288,6 +1296,8 @@ class WorktimeTrackerCard extends HTMLElement {
             <label>Type</label>
             <select id="pd-type">
               <option value="vacation" ${p.type === "vacation" ? "selected" : ""}>Vacation (semester) — 8h/day</option>
+              <option value="red_day" ${p.type === "red_day" ? "selected" : ""}>Red day (röddag) — 8h/day</option>
+              <option value="squeeze_day" ${p.type === "squeeze_day" ? "selected" : ""}>Squeeze day (klämdag) — 8h/day</option>
               <option value="sick" ${p.type === "sick" ? "selected" : ""}>Sick — 8h/day</option>
               <option value="home" ${p.type === "home" ? "selected" : ""}>Work from home — 8h/day</option>
               <option value="off" ${p.type === "off" ? "selected" : ""}>Off (unpaid) — 0h/day</option>

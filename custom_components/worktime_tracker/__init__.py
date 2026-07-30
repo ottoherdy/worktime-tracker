@@ -250,7 +250,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         )
 
         for coord in coords:
-            if day_type in ("sick", "off", "flex", "home", "vacation"):
+            if day_type and day_type != "normal":
                 await coord.async_edit_day(
                     target_date=target,
                     day_type=day_type,
@@ -398,7 +398,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         vol.Optional("arrival"): vol.Any(None, cv.string),
         vol.Optional("departure"): vol.Any(None, cv.string),
         vol.Optional("lunch"): vol.Any(None, "", vol.In([LUNCH_YES, LUNCH_NO, LUNCH_UNKNOWN])),
-        vol.Optional("type"): vol.Any(None, "", vol.In(["normal", "sick", "off", "flex", "home", "vacation"])),
+        vol.Optional("type"): vol.Any(None, "", vol.In(["normal", "sick", "off", "flex", "home", "vacation", "red_day", "squeeze_day"])),
         vol.Optional("hours"): vol.Any(None, "", vol.Coerce(float)),
         vol.Optional("entry_prefix"): cv.string,
     })
@@ -417,7 +417,7 @@ async def _async_register_services(hass: HomeAssistant) -> None:
     set_period_schema = vol.Schema({
         vol.Required("start_date"): cv.string,
         vol.Required("end_date"): cv.string,
-        vol.Required("type"): vol.In(["normal", "sick", "off", "flex", "home", "vacation"]),
+        vol.Required("type"): vol.In(["normal", "sick", "off", "flex", "home", "vacation", "red_day", "squeeze_day"]),
         vol.Optional("hours"): vol.Any(None, "", vol.Coerce(float)),
         vol.Optional("skip_existing", default=False): cv.boolean,
         vol.Optional("entry_prefix"): cv.string,

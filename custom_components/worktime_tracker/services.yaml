@@ -85,6 +85,8 @@ edit_day:
             - "flex"
             - "home"
             - "vacation"
+            - "red_day"
+            - "squeeze_day"
     arrival:
       name: Arrival
       description: Arrival time HH:MM (only for normal days).
@@ -149,6 +151,8 @@ set_period:
         select:
           options:
             - "vacation"
+            - "red_day"
+            - "squeeze_day"
             - "off"
             - "sick"
             - "flex"
