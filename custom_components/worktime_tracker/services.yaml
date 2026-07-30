@@ -120,6 +120,38 @@ edit_day:
           max: 24
           step: 0.5
           unit_of_measurement: h
+    top_up_type:
+      name: Top-up type
+      description: >
+        Splits a normal day so part counts as leave. E.g. worked 08–12
+        then flex 12–16 → set top_up_type=flex, top_up_hours=4.
+        Applies on top of arrival/departure. Empty to clear a
+        previously-set top-up.
+      required: false
+      selector:
+        select:
+          options:
+            - ""
+            - "flex"
+            - "sick"
+            - "off"
+            - "home"
+            - "vacation"
+            - "red_day"
+            - "squeeze_day"
+    top_up_hours:
+      name: Top-up hours
+      description: >
+        Extra credited hours for the top-up type (except "off", which
+        represents unpaid leave and adds 0). Ignored when top_up_type
+        is empty.
+      required: false
+      selector:
+        number:
+          min: -12
+          max: 12
+          step: 0.5
+          unit_of_measurement: h
 
 set_period:
   name: Set period

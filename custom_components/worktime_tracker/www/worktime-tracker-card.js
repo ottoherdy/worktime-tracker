@@ -317,7 +317,12 @@ function _weekSummary(allDays, monday, workDays, dailyTarget) {
       days.push({ ...entry, is_work_day: isWorkDay });
       const h = parseFloat(entry.hours) || 0;
       totalHours += h;
-      if (h > 0) daysWithWork += 1;
+      // Flex days (whole day or top-up on a normal day) count as
+      // workdays for the expected-hours calculation even when they
+      // contribute 0 credit, so taking a flex day pulls from the
+      // month's overtime bank exactly like the user's mental model.
+      const isFlex = entry.type === "flex" || entry.top_up_type === "flex";
+      if (h > 0 || isFlex) daysWithWork += 1;
     } else {
       days.push({
         date: iso,
@@ -352,7 +357,8 @@ function _monthSummary(allDays, monthStart, workDays, dailyTarget) {
     if (!d || d.date < isoStart || d.date > isoEnd) continue;
     const h = parseFloat(d.hours) || 0;
     totalHours += h;
-    if (h > 0) daysWithWork += 1;
+    const isFlex = d.type === "flex" || d.top_up_type === "flex";
+    if (h > 0 || isFlex) daysWithWork += 1;
     if (d.arrival && d.arrival !== "—" && d.departure && d.departure !== "—") {
       const [ah, am] = d.arrival.split(":").map((s) => parseInt(s, 10));
       const [dh, dm] = d.departure.split(":").map((s) => parseInt(s, 10));
@@ -490,6 +496,8 @@ class WorktimeTrackerCard extends HTMLElement {
       lunch: day.lunch && day.lunch !== "—" ? day.lunch : "",
       type: dayType,
       hours: isLeaveType && day.hours != null ? String(day.hours) : "",
+      top_up_type: day.top_up_type || "",
+      top_up_hours: day.top_up_hours != null ? String(day.top_up_hours) : "",
     };
     this._render();
   }
@@ -507,6 +515,10 @@ class WorktimeTrackerCard extends HTMLElement {
       if (e.arrival) payload.arrival = e.arrival;
       if (e.departure) payload.departure = e.departure;
       if (e.lunch) payload.lunch = e.lunch;
+      // Always send top-up fields so clearing them (empty string)
+      // reaches the backend and wipes any previously-stored values.
+      payload.top_up_type = e.top_up_type || "";
+      payload.top_up_hours = e.top_up_hours || "";
     }
     // hours override applies to any type (lets you do half-day sick etc.)
     if (e.hours !== "") payload.hours = parseFloat(e.hours);
@@ -1283,6 +1295,24 @@ class WorktimeTrackerCard extends HTMLElement {
             <div class="field-hint">Sets the exact credited hours for this day, ignoring arrival/departure. Use for half-day sick, partial flex, or trimming accidental overtime.</div>
           </div>
 
+          <div class="field" id="ed-field-topup" style="${isLeave ? "display:none" : ""}">
+            <label>Split day (top-up)</label>
+            <div style="display:flex; gap:8px; align-items:center">
+              <select id="ed-topup-type" style="flex:1">
+                <option value="" ${!e.top_up_type ? "selected" : ""}>— (no top-up)</option>
+                <option value="flex" ${e.top_up_type === "flex" ? "selected" : ""}>Flex</option>
+                <option value="sick" ${e.top_up_type === "sick" ? "selected" : ""}>Sick</option>
+                <option value="off" ${e.top_up_type === "off" ? "selected" : ""}>Off (unpaid)</option>
+                <option value="home" ${e.top_up_type === "home" ? "selected" : ""}>Home</option>
+                <option value="vacation" ${e.top_up_type === "vacation" ? "selected" : ""}>Vacation</option>
+                <option value="red_day" ${e.top_up_type === "red_day" ? "selected" : ""}>Red day</option>
+                <option value="squeeze_day" ${e.top_up_type === "squeeze_day" ? "selected" : ""}>Squeeze day</option>
+              </select>
+              <input type="number" id="ed-topup-hours" min="0" max="12" step="0.5" placeholder="hrs" value="${e.top_up_hours != null ? e.top_up_hours : ""}" style="width:80px">
+            </div>
+            <div class="field-hint">Marks part of a normal day as leave. E.g. worked 08–12 (4h) then flex 12–16 → set flex + 4. Flex top-ups also count against the month's overtime.</div>
+          </div>
+
           <div class="row-actions">
             <button class="btn danger" id="ed-clear">Clear day</button>
             <button class="btn" id="ed-cancel">Cancel</button>
@@ -1497,6 +1527,8 @@ class WorktimeTrackerCard extends HTMLElement {
         e.departure = $("ed-departure")?.value || "";
         e.lunch = $("ed-lunch")?.value || "";
         e.hours = $("ed-hours")?.value || "";
+        e.top_up_type = $("ed-topup-type")?.value || "";
+        e.top_up_hours = $("ed-topup-hours")?.value || "";
         this._saveEdit();
       });
       $("ed-clear")?.addEventListener("click", () => this._clearEditDay());
@@ -1505,6 +1537,8 @@ class WorktimeTrackerCard extends HTMLElement {
         $("ed-field-arrival").style.display = isLeave ? "none" : "";
         $("ed-field-departure").style.display = isLeave ? "none" : "";
         $("ed-field-lunch").style.display = isLeave ? "none" : "";
+        const tu = $("ed-field-topup");
+        if (tu) tu.style.display = isLeave ? "none" : "";
       });
     }
   }

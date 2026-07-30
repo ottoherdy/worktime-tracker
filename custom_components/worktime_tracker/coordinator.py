@@ -865,6 +865,8 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         lunch: str | None = None,
         day_type: str | None = None,
         hours: float | None = None,
+        top_up_type: str | None = None,
+        top_up_hours: float | None = None,
         sync_sheets: bool = True,
     ) -> None:
         """Edit or create a day entry.
@@ -978,12 +980,35 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         if lunch:
             entry["lunch"] = lunch
 
-        # Recalculate hours. An explicit hours= argument wins over the
-        # arrival→departure calculation — that's how the user overrides
-        # a day's total (e.g. trim accidental overtime, or set a half-
-        # day worked manually).
+        # Top-up: lets a normal day carry an extra leave-type chunk
+        # (e.g. "worked 08–12 (4h) + flex 12–16 (4h)") without
+        # switching the entire day to a leave record. Type is one of
+        # flex / sick / off / home / vacation / red_day / squeeze_day.
+        # Passing empty strings clears the fields, so a user can undo
+        # a top-up from the edit modal.
+        if top_up_type is not None:
+            if top_up_type:
+                entry["top_up_type"] = top_up_type
+            else:
+                entry.pop("top_up_type", None)
+        if top_up_hours is not None:
+            if top_up_hours in ("", None):
+                entry.pop("top_up_hours", None)
+            else:
+                entry["top_up_hours"] = round(float(top_up_hours), 2)
+
+        # Recalculate hours. worked_hours holds the arrival→departure
+        # portion so a later top-up edit can re-total without losing
+        # what the user actually punched. entry.hours is always the
+        # sum (worked + top-up credit) — that's what totals consume.
+        tu_type = entry.get("top_up_type")
+        tu_hours = float(entry.get("top_up_hours", 0.0) or 0.0)
+        # "off" top-up means the user left the missing time unpaid,
+        # so it doesn't add to credited hours — only marks intent.
+        tu_credit = tu_hours if tu_type and tu_type != DAY_TYPE_OFF else 0.0
+
         if hours is not None:
-            entry["hours"] = max(0.0, round(float(hours), 2))
+            worked = max(0.0, round(float(hours), 2))
             entry["lunch_deduction"] = (
                 self.lunch_deduction
                 if self._should_deduct_lunch_for_entry(entry) else 0.0
@@ -994,7 +1019,16 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             raw_hours = (dep - arr).total_seconds() / 3600.0
             deduction = self.lunch_deduction if self._should_deduct_lunch_for_entry(entry) else 0.0
             entry["lunch_deduction"] = deduction
-            entry["hours"] = max(0.0, round(raw_hours - deduction, 2))
+            worked = max(0.0, round(raw_hours - deduction, 2))
+        else:
+            # No new times / override — reuse the previously computed
+            # worked portion so a top-up-only edit still totals right.
+            # Falls back to entry.hours for pre-top-up entries that
+            # never carried a worked_hours field.
+            worked = float(entry.get("worked_hours", entry.get("hours", 0.0)))
+
+        entry["worked_hours"] = round(worked, 2)
+        entry["hours"] = round(worked + tu_credit, 2)
 
         entry["edited"] = True
 
@@ -1316,7 +1350,11 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                 break
             d_iso = d.isoformat()
             has_work = any(
-                e.get("date") == d_iso and float(e.get("hours", 0)) > 0
+                e.get("date") == d_iso and (
+                    float(e.get("hours", 0)) > 0
+                    or e.get("type") == DAY_TYPE_FLEX
+                    or e.get("top_up_type") == DAY_TYPE_FLEX
+                )
                 for e in self._all_credited_days(monday, sunday)
             )
             if not has_work and d == today and self.arrival is not None:
@@ -1351,7 +1389,11 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         end = date(today.year, today.month, last_day)
         days_with_work = 0
         for entry in self._all_credited_days(start, today):
-            if float(entry.get("hours", 0)) > 0:
+            if (
+                float(entry.get("hours", 0)) > 0
+                or entry.get("type") == DAY_TYPE_FLEX
+                or entry.get("top_up_type") == DAY_TYPE_FLEX
+            ):
                 days_with_work += 1
         # Ensure today counted if in-progress
         already_done = any(
@@ -1376,7 +1418,11 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         days_with_work = sum(
             1
             for e in self._all_credited_days(start, end)
-            if float(e.get("hours", 0)) > 0
+            if (
+                float(e.get("hours", 0)) > 0
+                or e.get("type") == DAY_TYPE_FLEX
+                or e.get("top_up_type") == DAY_TYPE_FLEX
+            )
         )
         expected = days_with_work * self.daily_net_target
         return round(self.hours_worked_in_month(year, month) - expected, 2)
@@ -1520,6 +1566,8 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                 "type": entry.get("type", DAY_TYPE_NORMAL),
                 "punch_out_missing": entry.get("punch_out_missing", False),
                 "is_work_day": self.is_work_day(d),
+                "top_up_type": entry.get("top_up_type"),
+                "top_up_hours": entry.get("top_up_hours"),
             })
         return result
 
@@ -1736,9 +1784,12 @@ class WorktimeCoordinator(DataUpdateCoordinator):
 
         overtime = round(hours - self.daily_net_target, 2)
         iso = target_date.isoformat()
+        iso_year, iso_week, _ = target_date.isocalendar()
 
         row = {
             "Date": iso,
+            "Week": f"{iso_year}-W{iso_week:02d}",
+            "Month": f"{target_date.year}-{target_date.month:02d}",
             "Weekday": _WEEKDAYS[target_date.weekday()],
             "Type": (
                 "Sick" if day_type == DAY_TYPE_SICK
@@ -1757,6 +1808,8 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             "Hours": round(hours, 4),
             "Hours (rounded)": f"{_round_quarter(hours):.2f}h",
             "Overtime": overtime,
+            "Top-up type": (entry or {}).get("top_up_type") or "",
+            "Top-up hours": (entry or {}).get("top_up_hours") or "",
             "Edited": "yes" if edited else "no",
             "Punch-out missing": "yes" if punch_out_missing else "no",
         }
@@ -1767,6 +1820,8 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             "departure": row["Departure"],
             "lunch": row["Lunch"],
             "hours": row["Hours"],
+            "top_up_type": row["Top-up type"],
+            "top_up_hours": row["Top-up hours"],
             "edited": row["Edited"],
             "punch_out_missing": row["Punch-out missing"],
         }
