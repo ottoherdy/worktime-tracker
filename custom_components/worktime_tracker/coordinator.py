@@ -87,6 +87,7 @@ from .const import (
     DAY_TYPE_NORMAL,
     DAY_TYPE_OFF,
     DAY_TYPE_SICK,
+    DAY_TYPE_VACATION,
     DEFAULT_ARRIVAL_MARGIN_MINUTES,
     DEFAULT_AUTO_DEPARTURE_ENABLED,
     DEFAULT_AUTO_DEPARTURE_TIME,
@@ -888,12 +889,13 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             local = datetime(ref_date.year, ref_date.month, ref_date.day, h, m)
             return dt_util.as_utc(dt_util.as_local(local))
 
-        if day_type in (DAY_TYPE_SICK, DAY_TYPE_OFF, DAY_TYPE_FLEX, DAY_TYPE_HOME):
-            if day_type in (DAY_TYPE_SICK, DAY_TYPE_HOME):
-                # Sick / home default to a full net workday's worth of
-                # credit — they represent a whole day away from the
-                # office. Override with the hours argument for partial
-                # days (e.g. half-day sick: pass hours=4).
+        if day_type in (DAY_TYPE_SICK, DAY_TYPE_OFF, DAY_TYPE_FLEX, DAY_TYPE_HOME, DAY_TYPE_VACATION):
+            if day_type in (DAY_TYPE_SICK, DAY_TYPE_HOME, DAY_TYPE_VACATION):
+                # Sick / home / paid vacation default to a full net
+                # workday's worth of credit — they represent a whole
+                # day away from the office where you're still on the
+                # clock (paid). Override with the hours argument for
+                # partial days (e.g. half-day sick: pass hours=4).
                 default_hours = float(
                     self.options.get(CONF_WORKDAY_HOURS, DEFAULT_WORKDAY_HOURS)
                 ) - self.lunch_deduction
@@ -1503,6 +1505,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                 "human_readable": _hours_to_human(hours),
                 "type": entry.get("type", DAY_TYPE_NORMAL),
                 "punch_out_missing": entry.get("punch_out_missing", False),
+                "is_work_day": self.is_work_day(d),
             })
         return result
 
@@ -1728,6 +1731,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                 else "Off" if day_type == DAY_TYPE_OFF
                 else "Flex" if day_type == DAY_TYPE_FLEX
                 else "Home" if day_type == DAY_TYPE_HOME
+                else "Vacation" if day_type == DAY_TYPE_VACATION
                 else "Normal"
             ),
             "Arrival": self._format_time(arrival),

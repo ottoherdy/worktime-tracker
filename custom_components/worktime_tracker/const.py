@@ -43,6 +43,7 @@ DAY_TYPE_SICK = "sick"
 DAY_TYPE_OFF = "off"
 DAY_TYPE_FLEX = "flex"
 DAY_TYPE_HOME = "home"  # Worked from home — counts like a normal day, no GPS
+DAY_TYPE_VACATION = "vacation"  # Paid vacation — credits net workday hours
 
 # Storage — keep original key and HA version so existing data is preserved.
 # Internal schema migrations use "schema_version" inside the data dict.
