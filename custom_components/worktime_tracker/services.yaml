@@ -82,6 +82,9 @@ edit_day:
             - "normal"
             - "sick"
             - "off"
+            - "flex"
+            - "home"
+            - "vacation"
     arrival:
       name: Arrival
       description: Arrival time HH:MM (only for normal days).
@@ -145,6 +148,7 @@ set_period:
       selector:
         select:
           options:
+            - "vacation"
             - "off"
             - "sick"
             - "flex"
@@ -154,7 +158,7 @@ set_period:
       name: Hours
       description: >
         Override hours counted per day. Leave empty for the default
-        (sick / home → net workday hours, off / flex → 0).
+        (sick / home / vacation → net workday hours, off / flex → 0).
       required: false
       selector:
         number:

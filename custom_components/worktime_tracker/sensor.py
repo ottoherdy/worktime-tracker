@@ -19,7 +19,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 from datetime import timedelta
 
-from .const import DOMAIN
+from .const import CONF_WORK_DAYS, DEFAULT_WORK_DAYS, DOMAIN
 from .coordinator import WorktimeCoordinator
 
 
@@ -228,6 +228,13 @@ class ThisMonthSensor(_Base):
         today = dt_util.now().date()
         hours = self.coordinator.hours_worked_in_month(today.year, today.month)
         avg = self.coordinator.avg_arrival_departure_in_month(today.year, today.month)
+        # all_days / work_days feed the card's back-navigation for
+        # Last week / Last month blocks. Kept off the today sensor
+        # because that one self-ticks every 30 s and would rewrite
+        # a 180-entry attribute to the recorder each time.
+        work_days = list(
+            self.coordinator.options.get(CONF_WORK_DAYS, DEFAULT_WORK_DAYS)
+        )
         return {
             "hours": hours,
             "human_readable": _hours_to_human(hours),
@@ -235,6 +242,9 @@ class ThisMonthSensor(_Base):
             "month": self.coordinator.month_name(0),
             "avg_arrival": avg[0] if avg else None,
             "avg_departure": avg[1] if avg else None,
+            "all_days": self.coordinator.recent_days(180),
+            "work_days": [int(d) for d in work_days],
+            "daily_net_target": self.coordinator.daily_net_target,
         }
 
 

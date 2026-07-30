@@ -245,6 +245,152 @@ function _weekdayShort(iso) {
   return new Intl.DateTimeFormat(undefined, { weekday: "short" }).format(d);
 }
 
+const _MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+// Local-timezone Monday for `weeksBack` weeks before today. Returns
+// a Date at 00:00 local. Avoids UTC drift that plain
+// `new Date(today - N*7*86400000)` would introduce around DST.
+function _mondayNWeeksBack(weeksBack) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dow = (today.getDay() + 6) % 7; // 0 = Mon, 6 = Sun
+  today.setDate(today.getDate() - dow - weeksBack * 7);
+  return today;
+}
+
+function _monthStartNMonthsBack(monthsBack) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return new Date(today.getFullYear(), today.getMonth() - monthsBack, 1);
+}
+
+function _dateToIso(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function _addDays(d, n) {
+  const out = new Date(d);
+  out.setDate(out.getDate() + n);
+  return out;
+}
+
+// ISO week number for a given Date. Used to label back-navigated
+// week blocks as "Week 25" instead of the fuzzier "N weeks ago".
+function _isoWeek(d) {
+  const t = new Date(d);
+  t.setHours(0, 0, 0, 0);
+  // Thursday of the ISO week determines the year.
+  t.setDate(t.getDate() + 4 - ((t.getDay() + 6) % 7 + 1));
+  const yearStart = new Date(t.getFullYear(), 0, 1);
+  const weekNo = Math.ceil(((t - yearStart) / 86400000 + 1) / 7);
+  return weekNo;
+}
+
+// Filter and summarise an all_days array for a specific weekday-Mon
+// bounded range, with empty workdays synthesised so the row list
+// still shows Mon–Fri (or whatever work_days is configured to) even
+// when nothing was logged.
+function _weekSummary(allDays, monday, workDays, dailyTarget) {
+  const sunday = _addDays(monday, 6);
+  const isoStart = _dateToIso(monday);
+  const isoEnd = _dateToIso(sunday);
+  const byDate = new Map();
+  for (const d of allDays || []) {
+    if (d && d.date >= isoStart && d.date <= isoEnd) byDate.set(d.date, d);
+  }
+  const days = [];
+  let totalHours = 0;
+  let daysWithWork = 0;
+  for (let i = 0; i < 7; i++) {
+    const dt = _addDays(monday, i);
+    const iso = _dateToIso(dt);
+    const weekdayIdx = (dt.getDay() + 6) % 7; // 0=Mon
+    const isWorkDay = workDays.includes(weekdayIdx);
+    const entry = byDate.get(iso);
+    if (entry) {
+      days.push({ ...entry, is_work_day: isWorkDay });
+      const h = parseFloat(entry.hours) || 0;
+      totalHours += h;
+      if (h > 0) daysWithWork += 1;
+    } else {
+      days.push({
+        date: iso,
+        weekday: _weekdayShort(iso),
+        arrival: "—",
+        departure: "—",
+        lunch: "—",
+        hours: 0,
+        type: "none",
+        is_work_day: isWorkDay,
+      });
+    }
+  }
+  const overtime = totalHours - daysWithWork * dailyTarget;
+  const avgHours = daysWithWork > 0 ? totalHours / daysWithWork : 0;
+  return { days, totalHours, overtime, daysWithWork, avgHours };
+}
+
+// Same for months — sums whichever calendar month `monthStart`
+// lands in, computes avg arrival / departure over days that have
+// both times, and returns overtime vs elapsed workdays.
+function _monthSummary(allDays, monthStart, workDays, dailyTarget) {
+  const nextMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 1);
+  const lastDay = _addDays(nextMonth, -1);
+  const isoStart = _dateToIso(monthStart);
+  const isoEnd = _dateToIso(lastDay);
+  let totalHours = 0;
+  let daysWithWork = 0;
+  const arrivals = [];
+  const departures = [];
+  for (const d of allDays || []) {
+    if (!d || d.date < isoStart || d.date > isoEnd) continue;
+    const h = parseFloat(d.hours) || 0;
+    totalHours += h;
+    if (h > 0) daysWithWork += 1;
+    if (d.arrival && d.arrival !== "—" && d.departure && d.departure !== "—") {
+      const [ah, am] = d.arrival.split(":").map((s) => parseInt(s, 10));
+      const [dh, dm] = d.departure.split(":").map((s) => parseInt(s, 10));
+      if (!isNaN(ah) && !isNaN(am)) arrivals.push(ah * 60 + am);
+      if (!isNaN(dh) && !isNaN(dm)) departures.push(dh * 60 + dm);
+    }
+  }
+  // Only workdays elapsed *within the month* count against expected
+  // hours — matches overtime_this_month's behaviour.
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const endOfElapsed = today < lastDay ? today : lastDay;
+  let elapsedWorkdays = 0;
+  for (let dt = new Date(monthStart); dt <= endOfElapsed; dt = _addDays(dt, 1)) {
+    const weekdayIdx = (dt.getDay() + 6) % 7;
+    if (workDays.includes(weekdayIdx)) elapsedWorkdays += 1;
+  }
+  const basisWorkdays = Math.max(daysWithWork, 0);
+  const overtime = totalHours - basisWorkdays * dailyTarget;
+  const fmtMin = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+  const avgArrival = arrivals.length
+    ? fmtMin(Math.round(arrivals.reduce((a, b) => a + b, 0) / arrivals.length))
+    : null;
+  const avgDeparture = departures.length
+    ? fmtMin(Math.round(departures.reduce((a, b) => a + b, 0) / departures.length))
+    : null;
+  const monthLabel = `${_MONTH_NAMES[monthStart.getMonth()]} ${monthStart.getFullYear()}`;
+  return {
+    totalHours,
+    overtime,
+    daysWithWork,
+    elapsedWorkdays,
+    avgArrival,
+    avgDeparture,
+    monthLabel,
+  };
+}
+
 class WorktimeTrackerCard extends HTMLElement {
   constructor() {
     super();
@@ -254,6 +400,14 @@ class WorktimeTrackerCard extends HTMLElement {
     this._editing = null;
     this._stateSig = "";
     this._lookupDate = _todayIso();
+    // Back-navigation offsets for the "Last week" / "Last month"
+    // blocks. 1 = the section's current default (last week / last
+    // month), 2 = one further back, etc. Capped at ~26 weeks / 6
+    // months since history storage tops out at 180 days.
+    this._weekBack = 1;
+    this._monthBack = 1;
+    // Semester period modal state (null when closed).
+    this._periodModal = null;
   }
 
   set hass(hass) {
@@ -324,7 +478,7 @@ class WorktimeTrackerCard extends HTMLElement {
     // day.hours would force-save the existing total even when the user
     // changed the times, and pre-filling with 0 (the initial value on a
     // freshly Added day) silently overrode the recompute with 0h.
-    const isLeaveType = ["sick", "off", "flex", "home"].includes(dayType);
+    const isLeaveType = ["sick", "off", "flex", "home", "vacation"].includes(dayType);
     this._editing = {
       date: day.date,
       arrival: _timeForInput(day.arrival),
@@ -421,9 +575,12 @@ class WorktimeTrackerCard extends HTMLElement {
       m?.attributes?.avg_arrival, m?.attributes?.avg_departure,
       lm?.state, lm?.attributes?.month, lm?.attributes?.overtime,
       lm?.attributes?.avg_arrival, lm?.attributes?.avg_departure,
+      (m?.attributes?.all_days || []).length,
       sw?.state,
       sun,
       this._lookupDate,
+      this._weekBack, this._monthBack,
+      this._periodModal ? "period" : "",
     ].join("|");
   }
 
@@ -573,11 +730,32 @@ class WorktimeTrackerCard extends HTMLElement {
     const weekAvgH = weekFilled.length ? weekHours / weekFilled.length : 0;
     const weekOvertime = parseFloat(weekAttr.overtime) || 0;
 
-    const lastWeekHours = lastWeekState ? parseFloat(lastWeekState.state) || 0 : 0;
-    const lastWeekDays = lastWeekAttr.days || [];
-    const lastWeekFilled = lastWeekDays.filter((d) => d && d.type !== "none" && parseFloat(d.hours) > 0);
-    const lastWeekAvgH = lastWeekFilled.length ? lastWeekHours / lastWeekFilled.length : 0;
-    const lastWeekOvertime = parseFloat(lastWeekAttr.overtime) || 0;
+    // Extended history for back-navigation. Kept on the month sensor
+    // so a 180-entry attribute doesn't ride along with the today
+    // sensor's 30-second tick.
+    const allDays = monthAttr.all_days || [];
+    const workDays = Array.isArray(monthAttr.work_days) ? monthAttr.work_days : [0, 1, 2, 3, 4];
+    const monthDailyTarget = parseFloat(monthAttr.daily_net_target) || target;
+
+    // Cap back-nav to the data window the sensor exposes (~180 days).
+    const maxWeekBack = 26;
+    const maxMonthBack = 6;
+    if (this._weekBack > maxWeekBack) this._weekBack = maxWeekBack;
+    if (this._weekBack < 1) this._weekBack = 1;
+    if (this._monthBack > maxMonthBack) this._monthBack = maxMonthBack;
+    if (this._monthBack < 1) this._monthBack = 1;
+
+    const lastWeekMonday = _mondayNWeeksBack(this._weekBack);
+    const lastWeekSummary = _weekSummary(allDays, lastWeekMonday, workDays, monthDailyTarget);
+    const lastWeekHours = lastWeekSummary.totalHours;
+    const lastWeekOvertime = lastWeekSummary.overtime;
+    const lastWeekFilled = lastWeekSummary.days.filter((d) => d && d.type !== "none" && parseFloat(d.hours) > 0);
+    const lastWeekAvgH = lastWeekSummary.avgHours;
+    const lastWeekIsoWeek = _isoWeek(lastWeekMonday);
+    const lastWeekTitle = this._weekBack === 1
+      ? (this._cfg("title_last_week") || "Last week")
+      : `Week ${lastWeekIsoWeek}`;
+    const lastWeekSubtitle = this._weekBack === 1 ? "" : `${this._weekBack} weeks ago`;
 
     const monthHours = monthState ? parseFloat(monthState.state) || 0 : 0;
     const monthOvertime = parseFloat(monthAttr.overtime) || 0;
@@ -585,11 +763,13 @@ class WorktimeTrackerCard extends HTMLElement {
     const monthAvgArr = monthAttr.avg_arrival || null;
     const monthAvgDep = monthAttr.avg_departure || null;
 
-    const lastMonthHours = lastMonthState ? parseFloat(lastMonthState.state) || 0 : 0;
-    const lastMonthOvertime = parseFloat(lastMonthAttr.overtime) || 0;
-    const lastMonthLabel = lastMonthAttr.month || "Last month";
-    const lastMonthAvgArr = lastMonthAttr.avg_arrival || null;
-    const lastMonthAvgDep = lastMonthAttr.avg_departure || null;
+    const lastMonthStart = _monthStartNMonthsBack(this._monthBack);
+    const lastMonthSummary = _monthSummary(allDays, lastMonthStart, workDays, monthDailyTarget);
+    const lastMonthHours = lastMonthSummary.totalHours;
+    const lastMonthOvertime = lastMonthSummary.overtime;
+    const lastMonthLabel = lastMonthSummary.monthLabel;
+    const lastMonthAvgArr = lastMonthSummary.avgArrival;
+    const lastMonthAvgDep = lastMonthSummary.avgDeparture;
 
     const historyLimit = parseInt(this._cfg("history_limit"), 10) || 10;
     const recentAll = attr.recent_days || [];
@@ -622,8 +802,9 @@ class WorktimeTrackerCard extends HTMLElement {
     const lookupPool = [];
     const todayIso = _todayIso();
     if (recentAll.length) lookupPool.push(...recentAll);
+    if (allDays.length) lookupPool.push(...allDays);
     for (const wd of weekDays) if (wd?.date) lookupPool.push(wd);
-    for (const wd of lastWeekDays) if (wd?.date) lookupPool.push(wd);
+    for (const wd of lastWeekSummary.days) if (wd?.date) lookupPool.push(wd);
     if (attr.status && (attr.arrival || hours > 0)) {
       lookupPool.push({
         date: todayIso,
@@ -638,7 +819,7 @@ class WorktimeTrackerCard extends HTMLElement {
 
     this._dayTables = {
       this_week: weekDays,
-      last_week: lastWeekDays,
+      last_week: lastWeekSummary.days,
       history: history,
       lookup: lookupPool,
     };
@@ -660,11 +841,13 @@ class WorktimeTrackerCard extends HTMLElement {
       : "";
 
     const weekListHtml = this._renderWeekList(weekDays, target, timeFmt);
-    const lastWeekListHtml = this._renderWeekList(lastWeekDays, target, timeFmt);
+    const lastWeekListHtml = this._renderWeekList(lastWeekSummary.days, target, timeFmt);
     const historyListHtml = this._renderHistoryList(history, target, timeFmt);
     const lookupBoxHtml = this._renderLookupBox(lookupPool, target, timeFmt);
 
-    const modalHtml = this._editing ? this._renderModal(this._editing) : "";
+    const modalHtml = this._editing
+      ? this._renderModal(this._editing)
+      : (this._periodModal ? this._renderPeriodModal(this._periodModal) : "");
 
     const cardClasses = [
       useDark ? "theme-dark" : "",
@@ -752,7 +935,12 @@ class WorktimeTrackerCard extends HTMLElement {
           ${showLastWeek ? `
             <section class="section">
               <div class="section-head">
-                <div class="section-title">${this._cfg("title_last_week")}</div>
+                <div class="section-title">
+                  <button class="nav-arrow" id="week-back" title="Older week">◀</button>
+                  <span>${lastWeekTitle}</span>
+                  <button class="nav-arrow" id="week-fwd" title="Newer week" ${this._weekBack <= 1 ? "disabled" : ""}>▶</button>
+                  ${lastWeekSubtitle ? `<span class="title-meta mono">${lastWeekSubtitle}</span>` : ""}
+                </div>
                 <div class="section-total">
                   <span class="tot mono">${_fmtHours(lastWeekHours, timeFmt)}</span>
                   <span class="sep-dot"></span>
@@ -765,7 +953,16 @@ class WorktimeTrackerCard extends HTMLElement {
             </section>` : ""}
 
           ${showThisMonth ? this._renderMonthBlock(this._cfg("title_this_month"), monthLabel, monthHours, monthOvertime, monthAvgArr, monthAvgDep, timeFmt) : ""}
-          ${showLastMonth ? this._renderMonthBlock(this._cfg("title_last_month"), lastMonthLabel, lastMonthHours, lastMonthOvertime, lastMonthAvgArr, lastMonthAvgDep, timeFmt) : ""}
+          ${showLastMonth ? this._renderMonthBlock(
+            this._cfg("title_last_month"),
+            lastMonthLabel,
+            lastMonthHours,
+            lastMonthOvertime,
+            lastMonthAvgArr,
+            lastMonthAvgDep,
+            timeFmt,
+            { showNav: true, monthBack: this._monthBack, maxMonthBack: maxMonthBack }
+          ) : ""}
 
           ${showHistory ? `
             <section class="section">
@@ -787,6 +984,7 @@ class WorktimeTrackerCard extends HTMLElement {
             <footer class="foot">
               <span>Saved locally</span>
               <span class="foot-links">
+                <a href="#" id="link-period">Add period</a>
                 <a href="#" id="link-export">Export</a>
                 <a href="#" id="link-sheets">Sheets</a>
                 ${this._cfg("show_btn_export_all") ? `<a href="#" id="link-export-all">Export all</a>` : ""}
@@ -837,17 +1035,24 @@ class WorktimeTrackerCard extends HTMLElement {
     return `<div class="actions ${cls}">${btns.join("")}</div>`;
   }
 
-  _renderMonthBlock(label, monthName, hours, overtime, avgArr, avgDep, timeFmt = "hm") {
+  _renderMonthBlock(label, monthName, hours, overtime, avgArr, avgDep, timeFmt = "hm", nav = null) {
     const hoursTxt = timeFmt === "decimal"
       ? `${hours.toFixed(2)}h`
       : _fmtHours(hours, timeFmt);
     const avgHtml = avgArr && avgDep
       ? `<span class="sep-dot"></span>avg <b class="mono">${avgArr}<span class="sep">→</span>${avgDep}</b>`
       : "";
+    const titleHtml = nav && nav.showNav
+      ? `
+          <button class="nav-arrow" id="month-back" title="Older month">◀</button>
+          <span>${label}</span>
+          <button class="nav-arrow" id="month-fwd" title="Newer month" ${nav.monthBack <= 1 ? "disabled" : ""}>▶</button>
+          <span class="title-meta mono">${monthName}</span>`
+      : `${label}<span class="title-meta mono">${monthName}</span>`;
     return `
       <section class="section">
         <div class="section-head">
-          <div class="section-title">${label}<span class="title-meta mono">${monthName}</span></div>
+          <div class="section-title">${titleHtml}</div>
           <div class="section-total">
             <span class="tot mono">${hoursTxt}</span>
             <span class="sep-dot"></span>
@@ -894,6 +1099,7 @@ class WorktimeTrackerCard extends HTMLElement {
         : d.type === "off" ? "off"
         : d.type === "flex" ? "flex"
         : d.type === "home" ? "home"
+        : d.type === "vacation" ? "vac"
         : _fmtHours(hoursNum, timeFmt);
       const editCell = editable
         ? `<div class="edit" data-row="${i}" title="Edit">${ICON.pencil}</div>`
@@ -920,6 +1126,7 @@ class WorktimeTrackerCard extends HTMLElement {
         : d.type === "off" ? "off"
         : d.type === "flex" ? "flex"
         : d.type === "home" ? "home"
+        : d.type === "vacation" ? "vac"
         : _fmtHours(hoursNum, timeFmt);
       return `
         <div class="history-row ${editClass}" data-row="${i}">
@@ -955,11 +1162,12 @@ class WorktimeTrackerCard extends HTMLElement {
         : match.type === "off" ? "Off"
         : match.type === "flex" ? "Flex"
         : match.type === "home" ? "Work from home"
+        : match.type === "vacation" ? "Vacation"
         : "Normal";
       const arrival = match.arrival || "—";
       const departure = match.departure || "—";
       const lunch = _lunchLabel(match.lunch);
-      const isLeaveType = ["sick", "off", "flex", "home"].includes(match.type);
+      const isLeaveType = ["sick", "off", "flex", "home", "vacation"].includes(match.type);
       const hoursTxt = isLeaveType
         ? `${hoursNum.toFixed(2)}h`
         : _fmtHours(hoursNum, timeFmt);
@@ -1010,7 +1218,8 @@ class WorktimeTrackerCard extends HTMLElement {
               <option value="home" ${e.type === "home" ? "selected" : ""}>Work from home</option>
               <option value="sick" ${e.type === "sick" ? "selected" : ""}>Sick</option>
               <option value="flex" ${e.type === "flex" ? "selected" : ""}>Flex</option>
-              <option value="off" ${e.type === "off" ? "selected" : ""}>Off / vacation</option>
+              <option value="vacation" ${e.type === "vacation" ? "selected" : ""}>Vacation (semester)</option>
+              <option value="off" ${e.type === "off" ? "selected" : ""}>Off (unpaid)</option>
             </select>
           </div>
 
@@ -1048,6 +1257,89 @@ class WorktimeTrackerCard extends HTMLElement {
       </div>`;
   }
 
+  _openPeriodModal() {
+    const today = _todayIso();
+    this._periodModal = {
+      start: today,
+      end: today,
+      type: "vacation",
+      skipExisting: true,
+    };
+    this._stateSig = "";
+    this._render();
+  }
+
+  _closePeriodModal() {
+    this._periodModal = null;
+    this._stateSig = "";
+    this._render();
+  }
+
+  _renderPeriodModal(p) {
+    // Semester / longer-leave picker. Wires straight to the
+    // set_period service so the loop, span cap, and Sheets sync
+    // all live on the backend where they already have tests and
+    // a review pass behind them.
+    return `
+      <div class="modal-backdrop" id="modal-backdrop">
+        <div class="modal">
+          <h3>Add period</h3>
+          <div class="field">
+            <label>Type</label>
+            <select id="pd-type">
+              <option value="vacation" ${p.type === "vacation" ? "selected" : ""}>Vacation (semester) — 8h/day</option>
+              <option value="sick" ${p.type === "sick" ? "selected" : ""}>Sick — 8h/day</option>
+              <option value="home" ${p.type === "home" ? "selected" : ""}>Work from home — 8h/day</option>
+              <option value="off" ${p.type === "off" ? "selected" : ""}>Off (unpaid) — 0h/day</option>
+              <option value="flex" ${p.type === "flex" ? "selected" : ""}>Flex — 0h/day</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Start date</label>
+            <input type="date" id="pd-start" value="${p.start}">
+          </div>
+          <div class="field">
+            <label>End date (inclusive)</label>
+            <input type="date" id="pd-end" value="${p.end}">
+          </div>
+          <div class="field">
+            <label>
+              <input type="checkbox" id="pd-skip" ${p.skipExisting ? "checked" : ""}>
+              Skip days that already have data
+            </label>
+            <div class="field-hint">Leaves any already-logged workdays alone. Uncheck to overwrite the whole range.</div>
+          </div>
+          <div class="row-actions">
+            <button class="btn" id="pd-cancel">Cancel</button>
+            <button class="btn primary" id="pd-save">Apply</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  _submitPeriodModal() {
+    const $ = (id) => this.shadowRoot.getElementById(id);
+    const start = $("pd-start")?.value;
+    const end = $("pd-end")?.value;
+    const type = $("pd-type")?.value || "vacation";
+    const skip = !!$("pd-skip")?.checked;
+    if (!start || !end) {
+      alert("Fill in both start and end dates.");
+      return;
+    }
+    if (end < start) {
+      alert("End date must be on or after the start date.");
+      return;
+    }
+    this._callService("set_period", {
+      start_date: start,
+      end_date: end,
+      type,
+      skip_existing: skip,
+    });
+    this._closePeriodModal();
+  }
+
   _wireEvents() {
     const $ = (id) => this.shadowRoot.getElementById(id);
 
@@ -1067,6 +1359,45 @@ class WorktimeTrackerCard extends HTMLElement {
       ev.preventDefault();
       if (confirm("Export every locally-known day to Sheets? Only days that are missing or changed since the last push will be sent.")) {
         this._callService("export_all");
+      }
+    });
+    $("link-period")?.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      this._openPeriodModal();
+    });
+    $("pd-cancel")?.addEventListener("click", () => this._closePeriodModal());
+    $("pd-save")?.addEventListener("click", () => this._submitPeriodModal());
+    if (this._periodModal) {
+      $("modal-backdrop")?.addEventListener("click", (ev) => {
+        if (ev.target.id === "modal-backdrop") this._closePeriodModal();
+      });
+    }
+
+    // Back-nav pilar för Last week / Last month. Uppdaterar bara
+    // motsvarande offset och tvingar en re-render — datan är redan
+    // klientsidig så inget nätverksanrop behövs.
+    $("week-back")?.addEventListener("click", () => {
+      this._weekBack += 1;
+      this._stateSig = "";
+      this._render();
+    });
+    $("week-fwd")?.addEventListener("click", () => {
+      if (this._weekBack > 1) {
+        this._weekBack -= 1;
+        this._stateSig = "";
+        this._render();
+      }
+    });
+    $("month-back")?.addEventListener("click", () => {
+      this._monthBack += 1;
+      this._stateSig = "";
+      this._render();
+    });
+    $("month-fwd")?.addEventListener("click", () => {
+      if (this._monthBack > 1) {
+        this._monthBack -= 1;
+        this._stateSig = "";
+        this._render();
       }
     });
 
@@ -1368,6 +1699,26 @@ class WorktimeTrackerCard extends HTMLElement {
         font-size: 14px; font-weight: 500;
         letter-spacing: -0.01em;
         color: var(--wt-ink);
+        display: inline-flex; align-items: center; gap: 6px;
+      }
+      .nav-arrow {
+        background: none;
+        border: none;
+        color: var(--wt-muted);
+        cursor: pointer;
+        padding: 0 4px;
+        font-size: 12px;
+        line-height: 1;
+        border-radius: 4px;
+        transition: color .12s, background .12s;
+      }
+      .nav-arrow:hover:not([disabled]) {
+        color: var(--wt-ink);
+        background: var(--wt-line-2);
+      }
+      .nav-arrow[disabled] {
+        opacity: 0.3;
+        cursor: default;
       }
       .section-title .title-meta {
         color: var(--wt-muted); font-weight: 500; font-size: 12px;
