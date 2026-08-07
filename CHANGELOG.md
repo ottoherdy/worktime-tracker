@@ -6,6 +6,26 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 Entries before 2.1.0 predate this file and are not reconstructed.
 
+## [2.12.1] — 2026-08-07
+
+### Fixed
+- Leave days were wiped on every restart. `_async_save` wrote the HA store
+  version into the payload's `schema_version` field, which is always `1`, so the
+  v1→v2 migration ran on every load and never converged. That migration rebuilt
+  `leave_records` from `history` alone, keeping only sick days — so vacation,
+  off, flex, work-from-home, red days and squeeze days were discarded each time,
+  and sick days went with them on the following restart.
+
+  The migration now merges into the existing `leave_records` instead of
+  replacing it, carries over every key it does not touch, and the saved
+  `schema_version` is a real schema constant, so it runs once and stops.
+- Arrival and departure margins, and the Google Sheets sync fingerprints, were
+  dropped by the same migration. Both are preserved now.
+
+> Days already lost cannot be recovered — they are gone from storage. Re-enter a
+> stretch with `worktime_tracker.set_period`, then run
+> `worktime_tracker.export_all` to bring Google Sheets back in line.
+
 ## [2.12.0] — 2026-08-07
 
 ### Added
@@ -220,6 +240,7 @@ Entries before 2.1.0 predate this file and are not reconstructed.
 - Inline editing on the card.
 - The card is auto-loaded by the integration — no manual resource registration.
 
+[2.12.1]: https://github.com/ottoherdy/worktime-tracker/releases/tag/v2.12.1
 [2.12.0]: https://github.com/ottoherdy/worktime-tracker/releases/tag/v2.12.0
 [2.11.0]: https://github.com/ottoherdy/worktime-tracker/releases/tag/v2.11.0
 [2.10.0]: https://github.com/ottoherdy/worktime-tracker/releases/tag/v2.10.0

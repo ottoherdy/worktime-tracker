@@ -50,7 +50,16 @@ DAY_TYPE_SQUEEZE_DAY = "squeeze_day"  # Bridge day (klämdag) — credits net wo
 # Storage — keep original key and HA version so existing data is preserved.
 # Internal schema migrations use "schema_version" inside the data dict.
 STORAGE_KEY = f"{DOMAIN}.history"
+
+# HA's Store version. Must stay 1: the Store is constructed without a
+# migrate function, so raising this would make Home Assistant call
+# _async_migrate_func and fail the load outright.
 STORAGE_VERSION = 1
+
+# Our own schema version, stored as "schema_version" inside the payload.
+# This is what drives _migrate_v1_to_v2 — and it must be what gets written
+# back on save, otherwise the migration re-runs on every restart.
+SCHEMA_VERSION = 2
 
 # Notification action ids (kept in const for use in coordinator)
 EVENT_NOTIFICATION_ACTION = "mobile_app_notification_action"

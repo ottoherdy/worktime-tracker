@@ -120,6 +120,7 @@ from .const import (
     STATUS_OFF_DUTY,
     STATUS_OVERTIME,
     STORAGE_KEY,
+    SCHEMA_VERSION,
     STORAGE_VERSION,
 )
 
@@ -1623,8 +1624,11 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         raw = raw or {}
         schema_version = raw.get("schema_version", 1)
 
-        if schema_version == 1:
+        if schema_version < SCHEMA_VERSION:
             raw = self._migrate_v1_to_v2(raw)
+            # Persist immediately so the migration is recorded even if Home
+            # Assistant stops before the next ordinary save.
+            await self._store.async_save(raw)
 
         self.history = raw.get("history", [])
         self.leave_records = raw.get("leave_records", [])
@@ -1673,16 +1677,26 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                 _LOGGER.warning("Worktime: failed to restore today state: %s", exc)
 
     def _migrate_v1_to_v2(self, raw: dict[str, Any]) -> dict[str, Any]:
-        """Migrate v1 storage (single flat history list) to v2 format."""
+        """Migrate v1 storage (single flat history list) to v2 format.
+
+        Only sick days ever lived in v1's history. Every other leave type —
+        vacation, off, flex, home, red_day, squeeze_day — exists solely in
+        leave_records, so that list is carried over untouched and the sick
+        entries pulled out of history are merged into it. Rebuilding
+        leave_records from history alone would discard all of them.
+
+        Returns a copy of raw with the migrated keys replaced, so anything
+        this function does not know about survives.
+        """
         _LOGGER.info("Worktime: migrating storage from v1 to v2")
         old_history: list[dict[str, Any]] = raw.get("history", [])
         new_history: list[dict[str, Any]] = []
-        new_leave: list[dict[str, Any]] = []
+        migrated_sick: list[dict[str, Any]] = []
 
         for entry in old_history:
             if entry.get("type") == DAY_TYPE_SICK:
                 # Move sick entries to leave_records
-                new_leave.append({
+                migrated_sick.append({
                     "date": entry.get("date", ""),
                     "type": DAY_TYPE_SICK,
                     "hours": float(entry.get("hours", 8.0)),
@@ -1700,13 +1714,23 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                     entry["edited"] = False
                 new_history.append(entry)
 
-        return {
-            "schema_version": 2,
+        # Existing records win on a date collision — they are the newer,
+        # authoritative form and may have been edited since.
+        existing_leave: list[dict[str, Any]] = list(raw.get("leave_records") or [])
+        known_dates = {e.get("date") for e in existing_leave}
+        new_leave = existing_leave + [
+            e for e in migrated_sick if e.get("date") not in known_dates
+        ]
+
+        migrated = dict(raw)
+        migrated.update({
+            "schema_version": SCHEMA_VERSION,
             "auto_departure_enabled": raw.get("auto_departure_enabled", False),
             "history": new_history,
             "leave_records": new_leave,
             "today": raw.get("today"),
-        }
+        })
+        return migrated
 
     async def _async_save(self) -> None:
         """Persist full state to storage."""
@@ -1722,7 +1746,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             }
 
         await self._store.async_save({
-            "schema_version": STORAGE_VERSION,
+            "schema_version": SCHEMA_VERSION,
             "auto_departure_enabled": self._auto_departure_enabled,
             "arrival_margin_minutes": self._arrival_margin_minutes,
             "departure_margin_minutes": self._departure_margin_minutes,
