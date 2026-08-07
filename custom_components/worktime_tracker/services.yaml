@@ -10,22 +10,56 @@ set_lunch:
       example: true
       selector:
         boolean:
+    entry_prefix:
+      name: Entry prefix
+      description: For multi-instance setups — restrict to this instance.
+      required: false
+      selector:
+        text:
 
 log_arrival:
   name: Log arrival
   description: Manually register arrival at work right now.
+  fields:
+    entry_prefix:
+      name: Entry prefix
+      description: For multi-instance setups — restrict to this instance.
+      required: false
+      selector:
+        text:
 
 log_departure:
   name: Log departure
   description: Manually register departure from work right now.
+  fields:
+    entry_prefix:
+      name: Entry prefix
+      description: For multi-instance setups — restrict to this instance.
+      required: false
+      selector:
+        text:
 
 reset_today:
   name: Reset today
   description: Clear today's registrations and start over.
+  fields:
+    entry_prefix:
+      name: Entry prefix
+      description: For multi-instance setups — restrict to this instance.
+      required: false
+      selector:
+        text:
 
 export_today:
   name: Export today to Sheets
   description: Re-send today's row to the configured Google Sheets worksheet.
+  fields:
+    entry_prefix:
+      name: Entry prefix
+      description: For multi-instance setups — restrict to this instance.
+      required: false
+      selector:
+        text:
 
 export_all:
   name: Export all to Sheets
@@ -152,6 +186,12 @@ edit_day:
           max: 12
           step: 0.5
           unit_of_measurement: h
+    entry_prefix:
+      name: Entry prefix
+      description: For multi-instance setups — restrict to this instance.
+      required: false
+      selector:
+        text:
 
 set_period:
   name: Set period
@@ -212,6 +252,27 @@ set_period:
       default: false
       selector:
         boolean:
+    entry_prefix:
+      name: Entry prefix
+      description: For multi-instance setups — restrict to this instance.
+      required: false
+      selector:
+        text:
+
+clear_day:
+  name: Clear day
+  description: >
+    Wipe a day completely — removes its history and leave entries. If the
+    date is today, the live arrival, departure and lunch state is reset
+    too, so tracking starts from scratch. Any row already sent to Google
+    Sheets is left in place and must be cleaned up there manually.
+  fields:
+    date:
+      name: Date
+      description: Day to clear (YYYY-MM-DD). Defaults to today.
+      required: false
+      selector:
+        date:
     entry_prefix:
       name: Entry prefix
       description: For multi-instance setups — restrict to this instance.

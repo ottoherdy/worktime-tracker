@@ -43,13 +43,27 @@
   },
   "entity": {
     "sensor": {
-      "arrival_time": {"name": "Ankomsttid"},
-      "planned_end_time": {"name": "Planerad sluttid"},
-      "departure_time": {"name": "Avresetid"},
-      "hours_today": {"name": "Timmar idag"},
-      "hours_week": {"name": "Timmar denna vecka"},
-      "overtime_week": {"name": "Övertid denna vecka"},
-      "time_remaining": {"name": "Tid kvar"},
+      "arrival_time": {
+        "name": "Ankomsttid"
+      },
+      "planned_end_time": {
+        "name": "Planerad sluttid"
+      },
+      "departure_time": {
+        "name": "Avresetid"
+      },
+      "hours_today": {
+        "name": "Timmar idag"
+      },
+      "hours_week": {
+        "name": "Timmar denna vecka"
+      },
+      "overtime_week": {
+        "name": "Övertid denna vecka"
+      },
+      "time_remaining": {
+        "name": "Tid kvar"
+      },
       "status": {
         "name": "Status",
         "state": {
@@ -69,19 +83,58 @@
       }
     },
     "binary_sensor": {
-      "at_work": {"name": "På jobbet"},
-      "day_complete": {"name": "Dag klar"}
+      "at_work": {
+        "name": "På jobbet"
+      },
+      "day_complete": {
+        "name": "Dag klar"
+      }
     },
     "number": {
-      "arrival_margin": {"name": "Ankomstmarginal"},
-      "departure_margin": {"name": "Avresemarginal"}
+      "arrival_margin": {
+        "name": "Ankomstmarginal"
+      },
+      "departure_margin": {
+        "name": "Avresemarginal"
+      }
     }
   },
   "services": {
-    "set_lunch": {"name": "Sätt lunchstatus", "description": "Markera om du haft lunch idag."},
-    "log_arrival": {"name": "Logga ankomst", "description": "Registrera ankomst manuellt nu."},
-    "log_departure": {"name": "Logga avresa", "description": "Registrera avresa manuellt nu."},
-    "reset_today": {"name": "Nollställ dagen", "description": "Rensa dagens data."},
-    "export_history": {"name": "Exportera dagen till Sheets", "description": "Skicka dagens rad till Google Sheets."}
+    "log_arrival": {
+      "name": "Logga ankomst",
+      "description": "Registrera ankomst manuellt nu. Ignorerar ankomstmarginalen."
+    },
+    "log_departure": {
+      "name": "Logga avresa",
+      "description": "Registrera avresa manuellt nu. Ignorerar avresemarginalen."
+    },
+    "set_lunch": {
+      "name": "Sätt lunchstatus",
+      "description": "Markera om du haft lunch idag."
+    },
+    "reset_today": {
+      "name": "Nollställ dagen",
+      "description": "Rensa dagens data och börja om."
+    },
+    "edit_day": {
+      "name": "Redigera dag",
+      "description": "Redigera eller skapa valfri dag — ankomst, avresa, lunch, typ eller timmar."
+    },
+    "clear_day": {
+      "name": "Rensa dag",
+      "description": "Radera en dag helt, inklusive historik- och frånvaroposter."
+    },
+    "set_period": {
+      "name": "Sätt period",
+      "description": "Markera alla dagar i ett datumintervall som samma typ, till exempel en semestervecka."
+    },
+    "export_today": {
+      "name": "Exportera dagen till Sheets",
+      "description": "Skicka dagens rad till Google Sheets nu."
+    },
+    "export_all": {
+      "name": "Exportera allt till Sheets",
+      "description": "Skicka om alla lokalt kända dagar som saknas eller ändrats i Sheets."
+    }
   }
 }

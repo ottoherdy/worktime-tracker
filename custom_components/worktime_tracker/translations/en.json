@@ -43,13 +43,27 @@
   },
   "entity": {
     "sensor": {
-      "arrival_time": {"name": "Arrival time"},
-      "planned_end_time": {"name": "Planned end time"},
-      "departure_time": {"name": "Departure time"},
-      "hours_today": {"name": "Hours today"},
-      "hours_week": {"name": "Hours this week"},
-      "overtime_week": {"name": "Overtime this week"},
-      "time_remaining": {"name": "Time remaining"},
+      "arrival_time": {
+        "name": "Arrival time"
+      },
+      "planned_end_time": {
+        "name": "Planned end time"
+      },
+      "departure_time": {
+        "name": "Departure time"
+      },
+      "hours_today": {
+        "name": "Hours today"
+      },
+      "hours_week": {
+        "name": "Hours this week"
+      },
+      "overtime_week": {
+        "name": "Overtime this week"
+      },
+      "time_remaining": {
+        "name": "Time remaining"
+      },
       "status": {
         "name": "Status",
         "state": {
@@ -69,19 +83,58 @@
       }
     },
     "binary_sensor": {
-      "at_work": {"name": "At work"},
-      "day_complete": {"name": "Day complete"}
+      "at_work": {
+        "name": "At work"
+      },
+      "day_complete": {
+        "name": "Day complete"
+      }
     },
     "number": {
-      "arrival_margin": {"name": "Arrival margin"},
-      "departure_margin": {"name": "Departure margin"}
+      "arrival_margin": {
+        "name": "Arrival margin"
+      },
+      "departure_margin": {
+        "name": "Departure margin"
+      }
     }
   },
   "services": {
-    "set_lunch": {"name": "Set lunch status", "description": "Mark whether lunch was taken today."},
-    "log_arrival": {"name": "Log arrival", "description": "Manually register arrival now."},
-    "log_departure": {"name": "Log departure", "description": "Manually register departure now."},
-    "reset_today": {"name": "Reset today", "description": "Clear today's data."},
-    "export_history": {"name": "Export today to Sheets", "description": "Re-send today's row to Google Sheets."}
+    "log_arrival": {
+      "name": "Log arrival",
+      "description": "Manually register arrival now. Ignores the arrival margin."
+    },
+    "log_departure": {
+      "name": "Log departure",
+      "description": "Manually register departure now. Ignores the departure margin."
+    },
+    "set_lunch": {
+      "name": "Set lunch status",
+      "description": "Mark whether lunch was taken today."
+    },
+    "reset_today": {
+      "name": "Reset today",
+      "description": "Clear today's data and start over."
+    },
+    "edit_day": {
+      "name": "Edit day",
+      "description": "Edit or create any day — arrival, departure, lunch, type or hours."
+    },
+    "clear_day": {
+      "name": "Clear day",
+      "description": "Wipe a day completely, removing its history and leave entries."
+    },
+    "set_period": {
+      "name": "Set period",
+      "description": "Mark every day in a date range as the same type, such as a vacation week."
+    },
+    "export_today": {
+      "name": "Export today to Sheets",
+      "description": "Send today's row to Google Sheets now."
+    },
+    "export_all": {
+      "name": "Export all to Sheets",
+      "description": "Re-send every locally known day that is missing or changed in Sheets."
+    }
   }
 }
