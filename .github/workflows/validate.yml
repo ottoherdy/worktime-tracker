@@ -46,9 +46,14 @@ jobs:
       - name: Syntax-check the card, widget and Apps Script
         shell: bash
         run: |
+          # node --check refuses unknown extensions, so .gs files are copied to
+          # a .js name before checking. Contents are plain JavaScript either way.
           status=0
+          tmp=$(mktemp -d)
           while IFS= read -r f; do
-            if node --check "$f"; then
+            target="$tmp/$(basename "$f").js"
+            cp "$f" "$target"
+            if node --check "$target"; then
               echo "ok   $f"
             else
               echo "FAIL $f"
