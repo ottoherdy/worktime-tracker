@@ -51,35 +51,36 @@ jobs:
 
       - name: Extract release notes from CHANGELOG
         if: steps.check.outputs.exists == 'false'
-        id: notes
         shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          version="${{ steps.version.outputs.version }}"
-          # Pull the lines between "## [version]" and the next "## " heading.
-          notes=$(awk -v v="$version" '
+          # Written to a file, never to a step output or a shell argument.
+          # Release notes contain backticks, quotes and $ — interpolating them
+          # into a command line would both mangle the text and let CHANGELOG
+          # content execute as shell.
+          awk -v v="$VERSION" '
             $0 ~ "^## \\[" v "\\]" { grab = 1; next }
             grab && /^## / { exit }
             grab { print }
-          ' CHANGELOG.md)
+          ' CHANGELOG.md > release-notes.md
 
-          if [ -z "$(echo "$notes" | tr -d '[:space:]')" ]; then
-            echo "::warning::No '## [$version]' section in CHANGELOG.md — releasing without notes."
-            notes="See the commit history for what changed in this release."
+          if [ ! -s release-notes.md ] || ! grep -q '[^[:space:]]' release-notes.md; then
+            echo "::warning::No '## [$VERSION]' section in CHANGELOG.md — releasing without notes."
+            echo "See the commit history for what changed in this release." > release-notes.md
           fi
 
-          {
-            echo "body<<RELEASE_NOTES_EOF"
-            echo "$notes"
-            echo "RELEASE_NOTES_EOF"
-          } >> "$GITHUB_OUTPUT"
+          echo "--- release notes ---"
+          cat release-notes.md
 
       - name: Create tag and release
         if: steps.check.outputs.exists == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
-          git tag "${{ steps.version.outputs.tag }}"
-          git push origin "${{ steps.version.outputs.tag }}"
-          gh release create "${{ steps.version.outputs.tag }}" \
-            --title "${{ steps.version.outputs.tag }}" \
-            --notes "${{ steps.notes.outputs.body }}"
+          git tag "$TAG"
+          git push origin "$TAG"
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes-file release-notes.md
