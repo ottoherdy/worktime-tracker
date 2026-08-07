@@ -1,9 +1,19 @@
+# Example Lovelace view for Worktime Tracker.
+#
+# This is the legacy hand-built dashboard. Most users should use the bundled
+# card instead (`custom:worktime-tracker-card`) — see the README.
+#
+# Requires the Mushroom card collection from HACS:
+#   https://github.com/piitaya/lovelace-mushroom
+#
+# Entity IDs below assume the default instance name ("Worktime Tracker").
+# If you named your instance differently, adjust the entity prefixes.
+
 title: Work
 path: work2
 type: sections
 max_columns: 1
 dense_section_placement: true
-theme: Graphite Auto
 background:
   opacity: 0
   alignment: top center
@@ -28,20 +38,6 @@ badges:
     tap_action:
       action: navigate
       navigation_path: /lovelace
-  - type: custom:mushroom-template-badge
-    content: ""
-    icon: mdi:tablet-dashboard
-    color: ""
-    tap_action:
-      action: navigate
-      navigation_path: /dashboard-workroom
-  - type: custom:mushroom-template-badge
-    content: ""
-    icon: mdi:auto-mode
-    color: ""
-    entity: input_boolean.kioskmode
-    tap_action:
-      action: toggle
 cards: []
 icon: mdi:briefcase
 sections:

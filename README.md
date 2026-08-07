@@ -5,6 +5,8 @@
 
 A complete **Home Assistant custom integration** for automatic work time tracking. Everything runs inside a single integration — no external automations or manual setup required. Fully configurable through the UI, and ships with its own phone-first Lovelace card.
 
+[Installation](#installation) · [Features](#features) · [Entities](#entities) · [Services](#services) · [Troubleshooting](#troubleshooting) · [Changelog](CHANGELOG.md)
+
 ---
 
 ## How it works
@@ -427,11 +429,64 @@ the card fills it in automatically based on the card's `entity_prefix`.
 ```
 worktime-tracker/
 ├── custom_components/worktime_tracker/   ← integration + bundled card (HACS installs this)
-├── dashboards/dashboard.yaml             ← example Lovelace view (legacy, prefer the bundled card)
-├── apps_script/                          ← optional Google Apps Script helpers
-├── scriptable/                           ← optional iOS widget script
+│   ├── www/worktime-tracker-card.js      ← the Lovelace card, auto-registered
+│   └── translations/                     ← en, sv
+├── dashboards/                           ← example Lovelace view (legacy; needs Mushroom cards)
+├── apps_script/                          ← optional Google Apps Script for Sheets export
+├── scriptable/                           ← optional iOS Scriptable widget
+├── deploy.sh                             ← dev helper: rsync to a test HA host
 ├── hacs.json                             ← HACS metadata
+├── CHANGELOG.md                          ← release history
 └── .github/workflows/validate.yml        ← hassfest + HACS validation
+```
+
+---
+
+## Development
+
+Only needed if you want to change the integration — to *use* it, install through HACS.
+
+**Working on a live Home Assistant instance.** `deploy.sh` rsyncs
+`custom_components/worktime_tracker/` to an HA host over SSH and restarts core:
+
+```bash
+./deploy.sh                     # host defaults to "homeassistant"
+HA_HOST=ha.lan ./deploy.sh      # or point it somewhere else
+```
+
+It needs SSH access to the host with `/config` writable and `ha` on PATH — the
+"Advanced SSH & Web Terminal" add-on provides both.
+
+**Checks.** CI runs on every push and pull request:
+
+- `hassfest` — Home Assistant's manifest and structure validation
+- `hacs/action` — HACS repository validation
+- `python -m compileall` — syntax check on the integration
+
+You can run the last one locally with `python -m compileall custom_components/worktime_tracker`.
+
+**Card changes.** The card is served from `custom_components/worktime_tracker/www/`
+and registered by the integration, so there is no build step — edit the JS,
+restart HA, and hard-refresh the browser. The URL is cache-busted per version,
+so bump `version` in `manifest.json` when shipping card changes.
+
+**Releases.** Bump `version` in `manifest.json`, add a section to
+[CHANGELOG.md](CHANGELOG.md), and tag the commit `vX.Y.Z`.
+
+---
+
+## Contributing
+
+Issues and pull requests are welcome at
+[github.com/ottoherdy/worktime-tracker](https://github.com/ottoherdy/worktime-tracker).
+
+When reporting a problem, please include your Home Assistant version, the
+integration version, and any relevant log output — enable debug logging with:
+
+```yaml
+logger:
+  logs:
+    custom_components.worktime_tracker: debug
 ```
 
 ---

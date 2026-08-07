@@ -1,19 +1,19 @@
 /*
- * Home Assistant - Google Sheets Webhook Integration
+ * Home Assistant — Google Sheets webhook receiver for Worktime Tracker
  *
- * Instruktioner för installation:
- * 1. Gå till script.google.com och skapa ett nytt projekt
- * 2. Klistra in denna kod i script-editorn
- * 3. Spara projektet (Ctrl+S)
- * 4. Klicka på "Deploy" > "New deployment"
- * 5. Välj typ: "Web app"
- * 6. Ställ in:
- *    - Execute as: Me (din Google-konto)
- *    - Who has access: Anyone
- * 7. Klicka "Deploy" och kopiera den genererade URL:en
- * 8. Använd denna URL som "Sheets webhook URL" i Home Assistant-integreringen
+ * Installation:
+ * 1. Open the Google Sheet you want to write to
+ * 2. Extensions > Apps Script — this binds the script to that sheet
+ * 3. Paste this code into the editor, replacing anything already there
+ * 4. Save (Ctrl+S / Cmd+S)
+ * 5. Deploy > New deployment
+ * 6. Type: "Web app", then set:
+ *      Execute as:     Me (your Google account)
+ *      Who has access: Anyone
+ * 7. Deploy, then copy the generated web app URL
+ * 8. Paste that URL as "Sheets webhook URL" in the Home Assistant integration
  *
- * Webhook förväntar JSON-data med följande fält:
+ * The webhook expects JSON with these fields:
  * {
  *   "date": "2026-04-25",
  *   "arrival": "2026-04-25T09:00:00+02:00",
@@ -22,75 +22,76 @@
  *   "lunch": 0.5,
  *   "hours": 7.5
  * }
+ *
+ * Rows are keyed by date: posting the same date twice updates the existing row
+ * rather than appending a duplicate.
  */
 
+// ---------------------------------------------------------------------------
+// Configuration — adjust these to taste
+// ---------------------------------------------------------------------------
+
+// Worksheet (tab) to write to. Must match the "Sheets worksheet" setting in the
+// Home Assistant integration. Created automatically if it does not exist.
+const SHEET_NAME = "Worktime";
+
+// Column headers, written to row 1 when the sheet is still empty. Translate
+// these freely — they are only used to seed a fresh sheet. An existing sheet
+// keeps whatever headers it already has; the script never rewrites them.
+// Column order is what matters: date, arrival, planned end, departure, lunch, hours.
+const HEADERS = ["Date", "Arrival", "Planned end", "Departure", "Lunch", "Hours"];
+
 /**
- * Webhook POST-mottagare från Home Assistant
- * Tar emot arbetsdata och lagrar/uppdaterar dem i "Worktime"-arket
+ * Webhook POST receiver for Home Assistant.
+ * Stores or updates one row per workday in the configured worksheet.
  */
 function doPost(e) {
   try {
-    // Parsa inkommande JSON-data
+    // Parse the incoming JSON payload
     const requestBody = e.postData.contents;
     const data = JSON.parse(requestBody);
 
-    // Validera obligatoriska fält
+    // Validate required fields
     if (!data.date || !data.arrival || !data.planned_end || !data.departure) {
-      return createResponse(false, "Saknade obligatoriska fält: date, arrival, planned_end, departure");
+      return createResponse(false, "Missing required fields: date, arrival, planned_end, departure");
     }
 
-    // Hämta eller skapa "Worktime"-arket
+    // Get the target worksheet, creating it if needed
     const sheet = getOrCreateWorksheet();
 
-    // Konvertera ISO-tidstämplar till HH:MM-format
+    // Convert ISO timestamps to HH:MM
     const arrivalTime = extractTime(data.arrival);
     const plannedEndTime = extractTime(data.planned_end);
     const departureTime = extractTime(data.departure);
 
-    // Hämta alla befintliga rader
+    // Read every existing row
     const range = sheet.getDataRange();
     const values = range.getValues();
 
-    // Kontrollera om arket är tomt (endast headers eller helt tomt)
-    let headerRowIndex = -1;
-    let dateColumnIndex = 0;
+    // Seed headers only on a genuinely empty sheet. A sheet that already has
+    // content keeps its own row 1 — whatever language it is in — so this never
+    // shifts or overwrites existing data.
+    const isEmpty = values.length === 0 ||
+      (values.length === 1 && values[0].every(cell => cell === ""));
 
-    if (values.length === 0) {
-      // Arket är tomt, lägg till headers
-      const headers = ["Datum", "Ankomst", "Planerad slut", "Avresa", "Lunch", "Timmar"];
-      sheet.appendRow(headers);
-      headerRowIndex = 1;
-    } else {
-      // Hitta header-raden (första raden)
-      const headers = values[0];
-      headerRowIndex = 1;
-
-      // Validera att headers finns, annars skapa dem
-      if (headers[0] !== "Datum") {
-        const expectedHeaders = ["Datum", "Ankomst", "Planerad slut", "Avresa", "Lunch", "Timmar"];
-        sheet.insertRowBefore(1);
-        sheet.getRange(1, 1, 1, expectedHeaders.length).setValues([expectedHeaders]);
-        headerRowIndex = 1;
-        // Läs om värden efter header-infogning
-        const updatedRange = sheet.getDataRange();
-        const updatedValues = updatedRange.getValues();
-        values.length = 0;
-        values.push(...updatedValues);
-      }
+    if (isEmpty) {
+      sheet.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
+      values.length = 0;
+      values.push(HEADERS);
     }
 
-    // Sök efter befintlig rad med samma datum
+    // Look for an existing row with the same date
     let existingRowIndex = -1;
     const dateToFind = data.date;
 
     for (let i = 1; i < values.length; i++) {
       if (values[i][0] === dateToFind) {
-        existingRowIndex = i + 1; // Google Sheets använder 1-baserad indexering
+        existingRowIndex = i + 1; // Google Sheets rows are 1-based
         break;
       }
     }
 
-    // Förbered data för uppdatering
+    // Build the row to write
     const newRow = [
       data.date,
       arrivalTime,
@@ -103,11 +104,11 @@ function doPost(e) {
     let action = "inserted";
 
     if (existingRowIndex > 0) {
-      // Uppdatera befintlig rad
+      // Overwrite the existing row for this date
       sheet.getRange(existingRowIndex, 1, 1, newRow.length).setValues([newRow]);
       action = "updated";
     } else {
-      // Lägg till ny rad
+      // Append a new row
       sheet.appendRow(newRow);
       action = "inserted";
     }
@@ -115,29 +116,27 @@ function doPost(e) {
     return createResponse(true, null, action);
 
   } catch (error) {
-    return createResponse(false, "Serverfel: " + error.message);
+    return createResponse(false, "Server error: " + error.message);
   }
 }
 
 /**
- * Hämtar "Worktime"-arket från den aktiva spreadsheeten.
- * Skapar det om det inte finns.
+ * Returns the worksheet named by SHEET_NAME, creating it if missing.
  */
 function getOrCreateWorksheet() {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = spreadsheet.getSheetByName("Worktime");
+  let sheet = spreadsheet.getSheetByName(SHEET_NAME);
 
   if (!sheet) {
-    // Arket existerar inte, skapa det
-    sheet = spreadsheet.insertSheet("Worktime");
+    sheet = spreadsheet.insertSheet(SHEET_NAME);
   }
 
   return sheet;
 }
 
 /**
- * Extraherar tid i HH:MM-format från en ISO 8601 tidstämpel
- * Exempel: "2026-04-25T09:30:00+02:00" -> "09:30"
+ * Extracts HH:MM from an ISO 8601 timestamp.
+ * Example: "2026-04-25T09:30:00+02:00" -> "09:30"
  */
 function extractTime(isoString) {
   if (!isoString) {
@@ -145,7 +144,7 @@ function extractTime(isoString) {
   }
 
   try {
-    // Ta ut tiden-delen (HH:MM:SS)
+    // Pull out the time portion (HH:MM:SS)
     const timeMatch = isoString.match(/T(\d{2}):(\d{2}):/);
     if (timeMatch) {
       return timeMatch[1] + ":" + timeMatch[2];
@@ -157,7 +156,7 @@ function extractTime(isoString) {
 }
 
 /**
- * Skapar ett standardiserat JSON-svar
+ * Builds a standard JSON response.
  */
 function createResponse(ok, error = null, action = null) {
   const response = {
