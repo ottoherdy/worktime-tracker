@@ -6,6 +6,32 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 Entries before 2.1.0 predate this file and are not reconstructed.
 
+## [2.12.0] — 2026-08-07
+
+### Added
+- `clear_day` now appears in the Home Assistant UI with a name, description and
+  date picker. It was registered in code but missing from `services.yaml`, so it
+  could only be called by the card or from YAML.
+- Every service now offers the `entry_prefix` field in the UI. All nine accepted
+  it already, but five did not declare it — which is exactly the field you need
+  on a multi-instance setup.
+
+### Fixed
+- Service translations listed `export_history`, which does not exist, and were
+  missing four services that do. All nine are now present in English and Swedish.
+
+### Changed
+- Documentation split up. The README is now a short introduction and install
+  guide; the reference material moved to `docs/` — configuration, the card,
+  entities, services, day types, Google Sheets and troubleshooting.
+- Documented the four day types that were never written down (`home`,
+  `vacation`, `red_day`, `squeeze_day`), the `set_period` service, day splitting
+  via top-up, and the six configuration settings added since 2.9.0.
+- Releases are now published automatically when the manifest version changes, so
+  HACS shows an update with the changelog section as its notes.
+- Commit messages follow Conventional Commits, enforced in CI. See
+  `CONTRIBUTING.md`.
+
 ## [2.11.0] — 2026-07-30
 
 ### Added
@@ -194,5 +220,6 @@ Entries before 2.1.0 predate this file and are not reconstructed.
 - Inline editing on the card.
 - The card is auto-loaded by the integration — no manual resource registration.
 
+[2.12.0]: https://github.com/ottoherdy/worktime-tracker/releases/tag/v2.12.0
 [2.11.0]: https://github.com/ottoherdy/worktime-tracker/releases/tag/v2.11.0
 [2.10.0]: https://github.com/ottoherdy/worktime-tracker/releases/tag/v2.10.0
