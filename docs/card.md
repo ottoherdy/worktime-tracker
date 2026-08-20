@@ -28,11 +28,24 @@ Top to bottom, with the defaults:
 | This month | off | Total hours and overtime |
 | Last month | off | Same |
 | History | on | Compact list with a bar per day, turning warn-orange past the daily target |
-| Look up day | on | Date picker reaching any day in history — **Edit** opens it filled in, **Add** opens a blank day |
+| Look up day | on | Date picker reaching any day, past or future — **Edit** opens it filled in, **Add** opens a blank day |
 | Footer | on | "Saved locally" on the left, Export / Sheets on the right |
 
 Tap any row, or the pencil, to open the edit modal for that day. **Reset today**
 asks for confirmation first.
+
+### Booking days ahead
+
+The look-up picker accepts future dates, so a week of vacation or a stretch of
+sick leave can be entered before it happens. Pick the day, press **Add**, choose
+the type, save. For a run of days use the period dialog (or
+[`set_period`](services.md#set_period)) instead of one day at a time.
+
+A day you have booked but not yet reached is marked **Planned** in the look-up
+box. Planned days stay out of the This week / This month totals and out of the
+overtime figures until the day actually arrives — otherwise next week's booked
+vacation would read as hours already worked. They are stored, exported to Google
+Sheets, and editable the whole time; they simply start counting on the day.
 
 ---
 

@@ -1258,8 +1258,13 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         year, week, _ = target.isocalendar()
         monday = target - timedelta(days=target.weekday())
         sunday = monday + timedelta(days=6)
+        # Stop at today. Leave booked ahead of time is real data, but
+        # it is not time already worked, and overtime_this_week builds
+        # its expected total from elapsed days only — counting future
+        # credit here would surface as phantom overtime.
+        window_end = min(sunday, today)
         total = 0.0
-        for entry in self._all_credited_days(monday, sunday):
+        for entry in self._all_credited_days(monday, window_end):
             try:
                 d = date.fromisoformat(entry["date"])
             except Exception:  # pylint: disable=broad-except
@@ -1285,10 +1290,12 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         last_day = monthrange(year, month)[1]
         start = date(year, month, 1)
         end = date(year, month, last_day)
-        total = 0.0
-        for entry in self._all_credited_days(start, end):
-            total += float(entry.get("hours", 0.0))
         today = dt_util.now().date()
+        # Elapsed days only — see hours_worked_in_week.
+        window_end = min(end, today)
+        total = 0.0
+        for entry in self._all_credited_days(start, window_end):
+            total += float(entry.get("hours", 0.0))
         if today.year == year and today.month == month:
             already_done = any(
                 e.get("date") == today.isoformat() and e.get("departure")
@@ -1496,6 +1503,10 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                     "type": day_type,
                     "punch_out_missing": entry.get("punch_out_missing", False),
                     "is_work_day": is_work_day,
+                    # Booked but not yet elapsed. The week sensor's own
+                    # state stops at today, so a consumer summing this
+                    # list must skip these to match it.
+                    "planned": d > today,
                 })
             else:
                 result.append({
@@ -1509,67 +1520,107 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                     "type": "none",
                     "punch_out_missing": False,
                     "is_work_day": is_work_day,
+                    "planned": d > today,
                 })
         return result
+
+    def _day_view(self, d: date, today: date) -> dict[str, Any] | None:
+        """Card-facing view of one day, or None if that day has no data.
+
+        Shared by recent_days (elapsed days) and upcoming_days
+        (pre-booked leave) so both render identically in the card.
+        """
+        d_iso = d.isoformat()
+
+        entry: dict[str, Any] | None = None
+        for e in self.history:
+            if e.get("date") == d_iso:
+                entry = e
+                break
+        if entry is None:
+            for e in self.leave_records:
+                if e.get("date") == d_iso:
+                    entry = e
+                    break
+
+        if entry is None and d == today and self.arrival is not None:
+            entry = {
+                "date": d_iso,
+                "arrival": self.arrival.isoformat(),
+                "departure": self._departure.isoformat() if self._departure else None,
+                "lunch": self.lunch_status,
+                "hours": self.hours_worked_today(),
+                "type": DAY_TYPE_NORMAL,
+            }
+
+        if not entry:
+            return None
+
+        def _p(iso: str | None) -> str:
+            if not iso:
+                return "—"
+            try:
+                return dt_util.as_local(datetime.fromisoformat(iso)).strftime("%H:%M")
+            except Exception:  # pylint: disable=broad-except
+                return "—"
+
+        hours = float(entry.get("hours", 0.0))
+        dep_iso = entry.get("departure") or (
+            self.planned_end.isoformat() if d == today and self.planned_end else None
+        )
+        return {
+            "date": d_iso,
+            "weekday": _SHORT_DAYS[d.weekday()],
+            "arrival": _p(entry.get("arrival")),
+            "departure": _p(dep_iso),
+            "lunch": entry.get("lunch", "—"),
+            "hours": round(hours, 2),
+            "human_readable": _hours_to_human(hours),
+            "type": entry.get("type", DAY_TYPE_NORMAL),
+            "punch_out_missing": entry.get("punch_out_missing", False),
+            "is_work_day": self.is_work_day(d),
+            "top_up_type": entry.get("top_up_type"),
+            "top_up_hours": entry.get("top_up_hours"),
+            "planned": d > today,
+        }
 
     def recent_days(self, count: int = 60) -> list[dict[str, Any]]:
         """Return last `count` days that have data, newest first."""
         today = dt_util.now().date()
         result = []
         for offset in range(count):
-            d = today - timedelta(days=offset)
-            d_iso = d.isoformat()
+            view = self._day_view(today - timedelta(days=offset), today)
+            if view is not None:
+                result.append(view)
+        return result
 
-            entry: dict[str, Any] | None = None
-            for e in self.history:
-                if e.get("date") == d_iso:
-                    entry = e
-                    break
-            if entry is None:
-                for e in self.leave_records:
-                    if e.get("date") == d_iso:
-                        entry = e
-                        break
+    def upcoming_days(self, count: int = 180) -> list[dict[str, Any]]:
+        """Return the next `count` days that have data, soonest first.
 
-            if entry is None and d == today and self.arrival is not None:
-                entry = {
-                    "date": d_iso,
-                    "arrival": self.arrival.isoformat(),
-                    "departure": self._departure.isoformat() if self._departure else None,
-                    "lunch": self.lunch_status,
-                    "hours": self.hours_worked_today(),
-                    "type": DAY_TYPE_NORMAL,
-                }
-
-            if not entry:
+        Only pre-booked days land here — leave entered ahead of time
+        with edit_day or set_period. They are deliberately kept out of
+        recent_days / all_days so the week and month blocks keep
+        counting elapsed time only; the card folds them into the
+        look-up pool so a planned day can still be inspected and edited.
+        """
+        today = dt_util.now().date()
+        horizon = today + timedelta(days=count)
+        # Driven off the stored dates rather than a day-by-day walk —
+        # a booked stretch is a handful of entries, while the window
+        # ahead is six months of mostly empty days.
+        dates: set[date] = set()
+        for e in (*self.history, *self.leave_records):
+            try:
+                d = date.fromisoformat(e.get("date") or "")
+            except ValueError:
                 continue
-
-            def _p(iso: str | None) -> str:
-                if not iso:
-                    return "—"
-                try:
-                    return dt_util.as_local(datetime.fromisoformat(iso)).strftime("%H:%M")
-                except Exception:  # pylint: disable=broad-except
-                    return "—"
-
-            hours = float(entry.get("hours", 0.0))
-            dep_iso = entry.get("departure") or (
-                self.planned_end.isoformat() if d == today and self.planned_end else None
-            )
-            result.append({
-                "date": d_iso,
-                "weekday": _SHORT_DAYS[d.weekday()],
-                "arrival": _p(entry.get("arrival")),
-                "departure": _p(dep_iso),
-                "lunch": entry.get("lunch", "—"),
-                "hours": round(hours, 2),
-                "human_readable": _hours_to_human(hours),
-                "type": entry.get("type", DAY_TYPE_NORMAL),
-                "punch_out_missing": entry.get("punch_out_missing", False),
-                "is_work_day": self.is_work_day(d),
-                "top_up_type": entry.get("top_up_type"),
-                "top_up_hours": entry.get("top_up_hours"),
-            })
+            if today < d <= horizon:
+                dates.add(d)
+        result = []
+        for d in sorted(dates):
+            view = self._day_view(d, today)
+            if view is not None:
+                result.append(view)
         return result
 
     def snapshot(self) -> dict[str, Any]:

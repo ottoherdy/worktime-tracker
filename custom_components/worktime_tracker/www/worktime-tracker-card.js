@@ -592,6 +592,12 @@ class WorktimeTrackerCard extends HTMLElement {
       lm?.state, lm?.attributes?.month, lm?.attributes?.overtime,
       lm?.attributes?.avg_arrival, lm?.attributes?.avg_departure,
       (m?.attributes?.all_days || []).length,
+      // Booking a day ahead moves no total and no length that the
+      // terms above would catch — the week and month figures stop at
+      // today — so planned days are fingerprinted by content or the
+      // card would keep showing the pre-save look-up box.
+      (m?.attributes?.upcoming_days || [])
+        .map((d) => `${d.date}:${d.type}:${d.hours}`).join(","),
       sw?.state,
       sun,
       this._lookupDate,
@@ -745,6 +751,10 @@ class WorktimeTrackerCard extends HTMLElement {
     // so a 180-entry attribute doesn't ride along with the today
     // sensor's 30-second tick.
     const allDays = monthAttr.all_days || [];
+    // Leave booked ahead of time. Deliberately kept out of allDays —
+    // the week and month blocks count elapsed days only — so this
+    // feeds the look-up box alone.
+    const upcomingDays = monthAttr.upcoming_days || [];
     const workDays = Array.isArray(monthAttr.work_days) ? monthAttr.work_days : [0, 1, 2, 3, 4];
     const monthDailyTarget = parseFloat(monthAttr.daily_net_target) || target;
 
@@ -835,6 +845,7 @@ class WorktimeTrackerCard extends HTMLElement {
     const todayIso = _todayIso();
     if (recentAll.length) lookupPool.push(...recentAll);
     if (allDays.length) lookupPool.push(...allDays);
+    if (upcomingDays.length) lookupPool.push(...upcomingDays);
     for (const wd of thisWeekBlock.summary.days) if (wd?.date) lookupPool.push(wd);
     for (const wd of lastWeekBlock.summary.days) if (wd?.date) lookupPool.push(wd);
     if (attr.status && (attr.arrival || hours > 0)) {
@@ -1219,7 +1230,7 @@ class WorktimeTrackerCard extends HTMLElement {
       body = `
         <div class="lookup-row">
           <span class="lookup-k">Type</span>
-          <span class="lookup-v">${typeLabel}</span>
+          <span class="lookup-v">${typeLabel}${match.planned ? ` <span class="planned-tag">Planned</span>` : ""}</span>
         </div>
         <div class="lookup-row">
           <span class="lookup-k">Arrival</span>
@@ -1242,7 +1253,7 @@ class WorktimeTrackerCard extends HTMLElement {
     return `
       <div class="lookup-card">
         <div class="lookup-controls">
-          <input type="date" id="lookup-date" value="${date}" max="${_todayIso()}">
+          <input type="date" id="lookup-date" value="${date}">
           ${editBtn}
         </div>
         ${body}
@@ -1939,6 +1950,12 @@ class WorktimeTrackerCard extends HTMLElement {
         color-scheme: light;
       }
       .theme-dark .lookup-controls input[type="date"] { color-scheme: dark; }
+      .planned-tag {
+        font-size: 11px; font-weight: 600; letter-spacing: .02em;
+        padding: 1px 6px; border-radius: 999px; vertical-align: middle;
+        border: 1px solid var(--wt-line);
+        color: var(--wt-muted);
+      }
       .lookup-controls .btn { height: 34px; padding: 0 10px; gap: 4px; font-size: 13px; }
       .lookup-row {
         display: flex; justify-content: space-between; align-items: center;

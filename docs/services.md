@@ -79,7 +79,11 @@ the live arrival, departure and lunch state resets too.
 
 ### `set_period`
 
-Applies one type across a date range, looping `edit_day` over each day.
+Applies one type across a date range, looping `edit_day` over each day. The
+range may lie in the future — this is the intended way to book a week of
+vacation or sick leave ahead of time. Days you have booked but not yet reached
+are held out of the week and month totals until they arrive; see
+[Booking days ahead](card.md#booking-days-ahead).
 
 | Field | Type | Required | Notes |
 |---|---|---|---|

@@ -243,6 +243,10 @@ class ThisMonthSensor(_Base):
             "avg_arrival": avg[0] if avg else None,
             "avg_departure": avg[1] if avg else None,
             "all_days": self.coordinator.recent_days(180),
+            # Pre-booked leave. Separate from all_days so the week and
+            # month blocks stay on elapsed days; the card only folds
+            # these into the look-up pool.
+            "upcoming_days": self.coordinator.upcoming_days(180),
             "work_days": [int(d) for d in work_days],
             "daily_net_target": self.coordinator.daily_net_target,
         }

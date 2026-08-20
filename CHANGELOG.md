@@ -6,6 +6,25 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 Entries before 2.1.0 predate this file and are not reconstructed.
 
+## [2.13.0] — 2026-08-20
+
+### Added
+- Days can be booked before they happen. The card's look-up picker no longer
+  stops at today, so a week of vacation or sick leave can be entered in advance
+  with **Add**, or in one go with `set_period`. A booked day that has not yet
+  arrived is marked **Planned** in the look-up box.
+- `sensor.this_month_hours_this_month` gained an `upcoming_days` attribute
+  listing those pre-booked days, and each entry in the week sensors' `days`
+  attribute carries a `planned` flag.
+
+### Fixed
+- Leave dated in the future inflated the week and month totals. `set_period`
+  already accepted future ranges, and the hours it credited were summed over the
+  whole week or calendar month while the matching overtime figure only ever
+  built its expected total from days up to today — so booking next week's
+  vacation showed up immediately as overtime that had not been worked. Both
+  totals now stop at today; planned days start counting on the day they arrive.
+
 ## [2.12.1] — 2026-08-07
 
 ### Fixed
