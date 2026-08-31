@@ -179,6 +179,9 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         # bump Rev when something has changed. Sheets export is fully optional —
         # this dict stays empty until the user actually uses it.
         self.sheets_sync: dict[str, dict[str, Any]] = {}
+        # Last rejection from Sheets, quoted back in the export_all abort
+        # so that line stands on its own instead of pointing elsewhere.
+        self._last_sheet_error: str | None = None
 
     # ------------------------------------------------------------------
     # Properties
@@ -1957,6 +1960,9 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             # whether this was a quota rejection, a missing worksheet or a
             # revoked token. The cause carries the status code, so log it.
             cause = exc.__cause__
+            self._last_sheet_error = (
+                f"{exc}" + (f" — caused by {cause!r}" if cause is not None else "")
+            )
             _LOGGER.warning(
                 "Worktime: Sheets append failed for %s (worksheet %r): %s%s",
                 iso,
@@ -2054,14 +2060,15 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                     # hundred identical log lines.
                     _LOGGER.error(
                         "Worktime: export_all aborted after %d consecutive "
-                        "failures — the cause is structural, not per-day. "
-                        "Check the warning above for the API response: a "
-                        "grid-limit error means the worksheet has fewer "
-                        "columns than the row needs (this integration "
-                        "writes 19, and google_sheets adds a 'created' "
-                        "column of its own, so the sheet needs at least "
-                        "20). Sent %d before stopping.",
+                        "failures, %d sent. The cause is structural, not "
+                        "per-day — Sheets said: %s. If that mentions grid "
+                        "limits, the worksheet %r has fewer columns than a "
+                        "row needs: this integration writes 19 and "
+                        "google_sheets adds a 'created' column of its own, "
+                        "so the sheet needs at least 20.",
                         consecutive_failures, sent,
+                        self._last_sheet_error or "no reason recorded",
+                        self.sheets_worksheet,
                     )
                     aborted = True
                     break

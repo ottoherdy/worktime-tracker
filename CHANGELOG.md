@@ -6,6 +6,15 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 Entries before 2.1.0 predate this file and are not reconstructed.
 
+## [2.14.2] — 2026-08-31
+
+### Fixed
+- The `export_all` abort told you to go and read the warning above it. Home
+  Assistant's error panel shows that abort on its own, so the reason was one
+  log level and several screens away from the line that announced the problem.
+  The abort now quotes the rejection Sheets actually returned, and names the
+  worksheet it was writing to.
+
 ## [2.14.1] — 2026-08-31
 
 ### Fixed
