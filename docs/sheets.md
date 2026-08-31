@@ -70,6 +70,9 @@ Written in this order:
 > ```
 >
 > Column T is the twentieth. Nothing is written at all — not a partial row.
+> The log prints the spreadsheet URL alongside the worksheet name: widen *that*
+> document's tab. A tab of the same name in another spreadsheet is a common
+> place for the fix to land without effect.
 > A new Google Sheet is 26 columns wide by default, so this only bites a sheet
 > that was trimmed to fit the header row exactly. Right-click any column header
 > and insert a few spare ones; the extra empties are harmless.

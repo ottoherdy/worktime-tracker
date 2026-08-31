@@ -6,6 +6,15 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 Entries before 2.1.0 predate this file and are not reconstructed.
 
+## [2.14.3] — 2026-08-31
+
+### Fixed
+- Sheets failures named the worksheet but not the spreadsheet, which leaves the
+  obvious question open when the fix is "go and widen that tab" — there is more
+  than one document a tab called `Worktime` could live in. Both the per-day
+  warning and the `export_all` abort now name the spreadsheet the config entry
+  points at and print its URL, so the tab to edit is one click away.
+
 ## [2.14.2] — 2026-08-31
 
 ### Fixed

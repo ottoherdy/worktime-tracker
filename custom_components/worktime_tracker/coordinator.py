@@ -1911,6 +1911,25 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         ).hexdigest()[:16]
         return row, fp, iso
 
+    def _sheets_target(self) -> str:
+        """Human-readable description of where exports are being written.
+
+        A failure that names only the worksheet leaves the obvious
+        question open — which spreadsheet? — and the answer lives in the
+        google_sheets config entry, not here. The entry's unique_id is
+        the spreadsheet key, so it rebuilds the URL.
+        """
+        entry_id = self.sheets_entry_id
+        if not entry_id:
+            return "no spreadsheet configured"
+        entry = self.hass.config_entries.async_get_entry(entry_id)
+        if entry is None:
+            return f"worksheet {self.sheets_worksheet!r} (config entry {entry_id} is gone)"
+        target = f"worksheet {self.sheets_worksheet!r} in {entry.title!r}"
+        if entry.unique_id:
+            target += f" — https://docs.google.com/spreadsheets/d/{entry.unique_id}"
+        return target
+
     async def _async_send_row(
         self,
         row: dict[str, Any],
@@ -1964,9 +1983,9 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                 f"{exc}" + (f" — caused by {cause!r}" if cause is not None else "")
             )
             _LOGGER.warning(
-                "Worktime: Sheets append failed for %s (worksheet %r): %s%s",
+                "Worktime: Sheets append failed for %s (%s): %s%s",
                 iso,
-                self.sheets_worksheet,
+                self._sheets_target(),
                 exc,
                 f" — caused by {cause!r}" if cause is not None else
                 " — no underlying cause attached",
@@ -2061,14 +2080,16 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                     _LOGGER.error(
                         "Worktime: export_all aborted after %d consecutive "
                         "failures, %d sent. The cause is structural, not "
-                        "per-day — Sheets said: %s. If that mentions grid "
-                        "limits, the worksheet %r has fewer columns than a "
-                        "row needs: this integration writes 19 and "
-                        "google_sheets adds a 'created' column of its own, "
-                        "so the sheet needs at least 20.",
+                        "per-day — Sheets said: %s. Target: %s. If that "
+                        "mentions grid limits, the worksheet has fewer "
+                        "columns than a row needs: this integration writes "
+                        "19 and google_sheets adds a 'created' column of "
+                        "its own, so the sheet needs at least 20. Widen "
+                        "that exact worksheet — a different tab or a "
+                        "different spreadsheet will not do it.",
                         consecutive_failures, sent,
                         self._last_sheet_error or "no reason recorded",
-                        self.sheets_worksheet,
+                        self._sheets_target(),
                     )
                     aborted = True
                     break
