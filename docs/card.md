@@ -29,7 +29,7 @@ Top to bottom, with the defaults:
 | Last month | off | Same |
 | History | on | Compact list with a bar per day, turning warn-orange past the daily target |
 | Look up day | on | Date picker reaching any day, past or future — **Edit** opens it filled in, **Add** opens a blank day |
-| Footer | on | "Saved locally" on the left, Export / Sheets on the right |
+| Footer | on | "Saved locally" on the left, Add period / Export / Sheets / Export to Sheets on the right |
 
 Tap any row, or the pencil, to open the edit modal for that day. **Reset today**
 asks for confirmation first.
@@ -83,7 +83,7 @@ show_btn_reset: true
 show_btn_departure: true
 show_btn_lunch: true
 show_btn_auto: true
-show_btn_export_all: false   # extra "Export all" link in the footer
+show_btn_export_all: true    # "Export to Sheets" dialog link in the footer
 
 # Size and layout
 padding: 14                  # outer padding, pixels

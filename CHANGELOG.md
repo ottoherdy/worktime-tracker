@@ -6,6 +6,27 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 Entries before 2.1.0 predate this file and are not reconstructed.
 
+## [2.14.0] — 2026-08-31
+
+### Added
+- An **Export to Sheets** dialog in the card footer, with a from-date and a
+  **Re-send days already marked as pushed** option. Both were reachable only by
+  calling `export_all` by hand before. The footer link is now on by default —
+  an export button that ships switched off helps nobody.
+
+### Changed
+- The footer link no longer fires an unconditional export behind a confirm
+  dialog. It opens the range picker instead, defaulting to the first of the
+  current month.
+
+### Fixed
+- Documented the case the old button could not fix: a day is skipped when its
+  fingerprint matches the last push, so rows lost on the Sheets side — a cleared
+  tab, a deleted range, a push recorded but never delivered — stayed missing no
+  matter how often the export was re-run. The force option ignores fingerprints.
+  `docs/sheets.md` now also reads the `sent/skipped/failed/total` log line as a
+  diagnosis.
+
 ## [2.13.0] — 2026-08-20
 
 ### Added

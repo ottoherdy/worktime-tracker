@@ -104,7 +104,7 @@ const DEFAULTS = {
   show_btn_departure: true,
   show_btn_lunch: true,
   show_btn_auto: true,
-  show_btn_export_all: false,
+  show_btn_export_all: true,
 };
 
 const COLOR_PRESETS = {
@@ -418,6 +418,8 @@ class WorktimeTrackerCard extends HTMLElement {
     this._lastMonthBack = 1;
     // Semester period modal state (null when closed).
     this._periodModal = null;
+    // Sheets export modal state (null when closed).
+    this._exportModal = null;
   }
 
   set hass(hass) {
@@ -604,6 +606,7 @@ class WorktimeTrackerCard extends HTMLElement {
       this._thisWeekBack, this._lastWeekBack,
       this._thisMonthBack, this._lastMonthBack,
       this._periodModal ? "period" : "",
+      this._exportModal ? "export" : "",
     ].join("|");
   }
 
@@ -890,7 +893,9 @@ class WorktimeTrackerCard extends HTMLElement {
 
     const modalHtml = this._editing
       ? this._renderModal(this._editing)
-      : (this._periodModal ? this._renderPeriodModal(this._periodModal) : "");
+      : (this._periodModal
+          ? this._renderPeriodModal(this._periodModal)
+          : (this._exportModal ? this._renderExportModal(this._exportModal) : ""));
 
     const cardClasses = [
       useDark ? "theme-dark" : "",
@@ -1395,6 +1400,67 @@ class WorktimeTrackerCard extends HTMLElement {
       </div>`;
   }
 
+  _openExportModal() {
+    // Defaults to the start of the current month — the usual reason to
+    // open this is "the sheet is missing this month", not "re-send two
+    // years of history".
+    const now = new Date();
+    const first = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+    this._exportModal = { since: first, force: false };
+    this._stateSig = "";
+    this._render();
+  }
+
+  _closeExportModal() {
+    this._exportModal = null;
+    this._stateSig = "";
+    this._render();
+  }
+
+  _renderExportModal(x) {
+    // The range and the force flag live here rather than on the footer
+    // link, because a plain export_all skips every day whose fingerprint
+    // already reads as sent — precisely the state you are trying to
+    // escape when rows are missing from the sheet.
+    return `
+      <div class="modal-backdrop" id="modal-backdrop">
+        <div class="modal">
+          <h3>Export to Sheets</h3>
+
+          <div class="field">
+            <label>From date</label>
+            <input type="date" id="ex-since" value="${x.since}">
+            <div class="field-hint">Sends every known day on or after this date. Clear the field to cover everything stored locally.</div>
+          </div>
+
+          <div class="field">
+            <label>
+              <input type="checkbox" id="ex-force" ${x.force ? "checked" : ""}>
+              Re-send days already marked as pushed
+            </label>
+            <div class="field-hint">A day is normally skipped when its fingerprint matches the last push. Tick this when rows are missing from the sheet anyway — after clearing the tab by hand, or when a push was recorded that never arrived. Re-sent days are appended with the next Rev number rather than replacing the old row.</div>
+          </div>
+
+          <div class="row-actions">
+            <button class="btn" id="ex-cancel">Cancel</button>
+            <button class="btn primary" id="ex-save">Export</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  _submitExportModal() {
+    const $ = (id) => this.shadowRoot.getElementById(id);
+    const since = $("ex-since")?.value || "";
+    const force = !!$("ex-force")?.checked;
+    const data = { force };
+    // Omitted rather than sent empty — the service treats a missing
+    // since as "everything".
+    if (since) data.since = since;
+    this._callService("export_all", data);
+    this._closeExportModal();
+  }
+
   _submitPeriodModal() {
     const $ = (id) => this.shadowRoot.getElementById(id);
     const start = $("pd-start")?.value;
@@ -1435,9 +1501,7 @@ class WorktimeTrackerCard extends HTMLElement {
     $("link-sheets")?.addEventListener("click", (ev) => { ev.preventDefault(); this._callService("export_today"); });
     $("link-export-all")?.addEventListener("click", (ev) => {
       ev.preventDefault();
-      if (confirm("Export every locally-known day to Sheets? Only days that are missing or changed since the last push will be sent.")) {
-        this._callService("export_all");
-      }
+      this._openExportModal();
     });
     $("link-period")?.addEventListener("click", (ev) => {
       ev.preventDefault();
@@ -1445,9 +1509,16 @@ class WorktimeTrackerCard extends HTMLElement {
     });
     $("pd-cancel")?.addEventListener("click", () => this._closePeriodModal());
     $("pd-save")?.addEventListener("click", () => this._submitPeriodModal());
+    $("ex-cancel")?.addEventListener("click", () => this._closeExportModal());
+    $("ex-save")?.addEventListener("click", () => this._submitExportModal());
     if (this._periodModal) {
       $("modal-backdrop")?.addEventListener("click", (ev) => {
         if (ev.target.id === "modal-backdrop") this._closePeriodModal();
+      });
+    }
+    if (this._exportModal) {
+      $("modal-backdrop")?.addEventListener("click", (ev) => {
+        if (ev.target.id === "modal-backdrop") this._closeExportModal();
       });
     }
 
@@ -2133,7 +2204,7 @@ class WorktimeTrackerCardEditor extends HTMLElement {
       ["show_btn_departure", "Departure"],
       ["show_btn_lunch", "Lunch toggle"],
       ["show_btn_auto", "Auto-out toggle"],
-      ["show_btn_export_all", "Export all (footer link)"],
+      ["show_btn_export_all", "Export to Sheets (footer link)"],
     ].map(([k, label]) => `
       <label class="row">
         <input type="checkbox" data-key="${k}" ${this._get(k) ? "checked" : ""}>

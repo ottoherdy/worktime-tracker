@@ -104,6 +104,21 @@ action: worktime_tracker.export_all
 It skips days that are already there and unchanged, so it is safe to re-run. See
 [`export_all`](services.md#export_all) for narrowing by date or forcing a resend.
 
+### From the card
+
+The footer's **Export to Sheets** link opens a dialog with the same two controls,
+so neither the range nor the resend needs a service call. It defaults to the
+first of the current month, which is the usual shape of the problem — this
+month's rows are missing, the rest of the sheet is fine.
+
+Tick **Re-send days already marked as pushed** when the rows are missing from
+the sheet even though the integration thinks it sent them. That is the one case
+a plain export cannot fix on its own: each day carries a fingerprint of what was
+last pushed, and a day whose fingerprint still matches is skipped without a
+second thought. If the sheet lost those rows — a cleared tab, a deleted range, a
+push that was recorded but never arrived — the fingerprint is a lie no amount of
+re-running will notice. Forcing ignores it.
+
 ---
 
 ## When rows do not appear
@@ -116,3 +131,16 @@ Worktime: google_sheets not installed — skipping export
 
 That means the Google Sheets integration is missing or the Config Entry ID is
 wrong. More symptoms in [Troubleshooting](troubleshooting.md).
+
+Every run also logs its own tally:
+
+```
+Worktime: export_all done — sent=12 skipped=140 failed=0 total=152
+```
+
+Read it as a diagnosis. `sent=0 skipped=N` with rows missing from the sheet means
+the fingerprints are stale — force the resend. `failed=N` means Sheets rejected
+the rows, and the lines above it say why. A `total` far lower than the number of
+days you expect means the days are not in local storage at all, so there is
+nothing to export: re-enter the stretch with
+[`set_period`](services.md#set_period) first, then export.
