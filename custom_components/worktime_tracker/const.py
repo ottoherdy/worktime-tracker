@@ -119,3 +119,13 @@ SERVICE_SET_PERIOD = "set_period"
 # leave rarely exceeds a year, and this stops a fat-fingered range from
 # tying up the event loop rewriting storage thousands of times.
 MAX_SET_PERIOD_DAYS = 366
+
+# Bulk export pacing. The Sheets API allows 60 write requests per minute
+# per user; export_all fires one append per day, so a month sent flat out
+# runs straight into the quota and every remaining day comes back as
+# "Failed to write data".
+EXPORT_THROTTLE_SECONDS = 1.1
+# A structural rejection — a worksheet too narrow for the row, a wrong
+# name, a revoked token — fails identically for every remaining day.
+# Stop and say so once instead of emitting one warning per day.
+EXPORT_MAX_CONSECUTIVE_FAILURES = 5

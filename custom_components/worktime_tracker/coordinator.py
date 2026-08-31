@@ -1,6 +1,7 @@
 """Coordinator – contains all the business logic for Worktime Tracker."""
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -54,34 +55,30 @@ from .const import (
     ACTION_MORNING_HOME,
     ACTION_MORNING_SICK,
     ACTION_OFFDAY_ARRIVE,
-    ACTION_TIMEREPORT_YES,
-    NOTIFICATION_TAG_DEPARTURE,
-    NOTIFICATION_TAG_MORNING,
-    NOTIFICATION_TAG_OFFDAY,
-    NOTIFICATION_TAG_TIMEREPORT,
     ACTION_TIMEREPORT_NO,
+    ACTION_TIMEREPORT_YES,
+    CONF_ARRIVAL_MARGIN_MINUTES,
     CONF_AUTO_DEPARTURE_ENABLED,
     CONF_AUTO_DEPARTURE_TIME,
     CONF_AUTO_EXPORT_DELAY_HOURS,
     CONF_AUTO_EXPORT_ENABLED,
     CONF_AUTO_LUNCH_DEFAULT,
-    CONF_ARRIVAL_MARGIN_MINUTES,
     CONF_DEPARTURE_MARGIN_MINUTES,
     CONF_FORGOT_DEPARTURE_ENABLED,
     CONF_FORGOT_DEPARTURE_OFFSET_MIN,
-    CONF_ZONE_EXIT_GRACE_MIN,
-    CONF_WORK_DAYS,
     CONF_LUNCH_DEDUCTION,
+    CONF_LUNCH_TIME,
     CONF_MORNING_REMINDER_ENABLED,
     CONF_MORNING_REMINDER_TIME,
-    CONF_LUNCH_TIME,
     CONF_NOTIFY_SERVICE,
     CONF_PERSON,
     CONF_SHEETS_ENTRY_ID,
     CONF_SHEETS_WORKSHEET,
     CONF_WEEKLY_TARGET,
-    CONF_WORK_ZONE,
     CONF_WORKDAY_HOURS,
+    CONF_WORK_DAYS,
+    CONF_WORK_ZONE,
+    CONF_ZONE_EXIT_GRACE_MIN,
     DAY_TYPE_FLEX,
     DAY_TYPE_HOME,
     DAY_TYPE_NORMAL,
@@ -99,8 +96,6 @@ from .const import (
     DEFAULT_DEPARTURE_MARGIN_MINUTES,
     DEFAULT_FORGOT_DEPARTURE_ENABLED,
     DEFAULT_FORGOT_DEPARTURE_OFFSET_MIN,
-    DEFAULT_ZONE_EXIT_GRACE_MIN,
-    DEFAULT_WORK_DAYS,
     DEFAULT_LUNCH_DEDUCTION,
     DEFAULT_LUNCH_TIME,
     DEFAULT_MORNING_REMINDER_ENABLED,
@@ -108,19 +103,27 @@ from .const import (
     DEFAULT_SHEETS_WORKSHEET,
     DEFAULT_WEEKLY_TARGET,
     DEFAULT_WORKDAY_HOURS,
+    DEFAULT_WORK_DAYS,
+    DEFAULT_ZONE_EXIT_GRACE_MIN,
     DOMAIN,
-    MAX_MARGIN_MINUTES,
     EVENT_NOTIFICATION_ACTION,
+    EXPORT_MAX_CONSECUTIVE_FAILURES,
+    EXPORT_THROTTLE_SECONDS,
     LUNCH_NO,
     LUNCH_UNKNOWN,
     LUNCH_YES,
+    MAX_MARGIN_MINUTES,
     NOTIFICATION_TAG,
+    NOTIFICATION_TAG_DEPARTURE,
+    NOTIFICATION_TAG_MORNING,
+    NOTIFICATION_TAG_OFFDAY,
+    NOTIFICATION_TAG_TIMEREPORT,
+    SCHEMA_VERSION,
     STATUS_AT_WORK,
     STATUS_DONE,
     STATUS_OFF_DUTY,
     STATUS_OVERTIME,
     STORAGE_KEY,
-    SCHEMA_VERSION,
     STORAGE_VERSION,
 )
 
@@ -1949,7 +1952,19 @@ class WorktimeCoordinator(DataUpdateCoordinator):
                 blocking=True,
             )
         except Exception as exc:  # pylint: disable=broad-except
-            _LOGGER.warning("Worktime: Sheets append failed for %s: %s", iso, exc)
+            # google_sheets raises HomeAssistantError("Failed to write
+            # data") for every gspread APIError, which says nothing about
+            # whether this was a quota rejection, a missing worksheet or a
+            # revoked token. The cause carries the status code, so log it.
+            cause = exc.__cause__
+            _LOGGER.warning(
+                "Worktime: Sheets append failed for %s (worksheet %r): %s%s",
+                iso,
+                self.sheets_worksheet,
+                exc,
+                f" — caused by {cause!r}" if cause is not None else
+                " — no underlying cause attached",
+            )
             return False
 
         self.sheets_sync[iso] = {"rev": rev, "fp": fp, "ts": now_iso}
@@ -2006,6 +2021,9 @@ class WorktimeCoordinator(DataUpdateCoordinator):
         combined.sort(key=lambda e: e.get("date", ""))
 
         sent = skipped = failed = 0
+        consecutive_failures = 0
+        aborted = False
+        first_send = True
         for e in combined:
             built = self._build_sheet_row(e)
             if built is None:
@@ -2016,20 +2034,52 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             if not force and prev_fp == fp:
                 skipped += 1
                 continue
+            # Pace the appends. The Sheets API allows 60 writes per
+            # minute per user, and a forced year would otherwise spend
+            # its tail being rejected for quota.
+            if not first_send:
+                await asyncio.sleep(EXPORT_THROTTLE_SECONDS)
+            first_send = False
             source = "export_all_force" if force else "export_all"
             ok = await self._async_send_row(row, iso, fp, source)
             if ok:
                 sent += 1
+                consecutive_failures = 0
             else:
                 failed += 1
+                consecutive_failures += 1
+                if consecutive_failures >= EXPORT_MAX_CONSECUTIVE_FAILURES:
+                    # Whatever is wrong is wrong for every remaining day
+                    # too. Bailing keeps one cause from becoming a
+                    # hundred identical log lines.
+                    _LOGGER.error(
+                        "Worktime: export_all aborted after %d consecutive "
+                        "failures — the cause is structural, not per-day. "
+                        "Check the warning above for the API response: a "
+                        "grid-limit error means the worksheet has fewer "
+                        "columns than the row needs (this integration "
+                        "writes 19, and google_sheets adds a 'created' "
+                        "column of its own, so the sheet needs at least "
+                        "20). Sent %d before stopping.",
+                        consecutive_failures, sent,
+                    )
+                    aborted = True
+                    break
 
         if sent:
             await self._async_save()
         _LOGGER.info(
-            "Worktime: export_all done — sent=%d skipped=%d failed=%d total=%d",
+            "Worktime: export_all %s — sent=%d skipped=%d failed=%d total=%d",
+            "aborted" if aborted else "done",
             sent, skipped, failed, len(combined),
         )
-        return {"sent": sent, "skipped": skipped, "failed": failed, "total": len(combined)}
+        return {
+            "sent": sent,
+            "skipped": skipped,
+            "failed": failed,
+            "total": len(combined),
+            "aborted": aborted,
+        }
 
     async def _async_send_lunch_notification(self) -> None:
         svc = self.notify_service

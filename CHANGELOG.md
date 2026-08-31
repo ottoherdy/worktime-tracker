@@ -6,6 +6,30 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 Entries before 2.1.0 predate this file and are not reconstructed.
 
+## [2.14.1] — 2026-08-31
+
+### Fixed
+- A failed Sheets append said only `Failed to write data`. Home Assistant's
+  `google_sheets` integration wraps every underlying API error in that one
+  string, and the cause — which carries the status code and Google's own
+  message — was dropped on the floor. The warning now names the worksheet and
+  the chained cause, so a too-narrow sheet, a revoked token and a quota
+  rejection stop looking identical.
+- `export_all` worked through every remaining day after a structural failure,
+  turning one misconfiguration into one warning per day. It now stops after
+  five consecutive failures and says why.
+- `export_all` sent its appends as fast as it could manage. The Sheets API
+  allows 60 writes per minute, so a forced export of a long range spent its
+  tail being rejected for quota. Appends are now paced.
+
+### Documentation
+- The column table listed 15 columns; the integration writes 19. `Week`,
+  `Month`, `Top-up type` and `Top-up hours` were missing. A sheet built to
+  match the old table is too narrow to accept a row.
+- Documented that the worksheet needs **at least 20 columns**: the 19 written
+  here plus the `created` column that `google_sheets` adds to every row. A grid
+  that stops at 19 rejects the entire write with `exceeds grid limits`.
+
 ## [2.14.0] — 2026-08-31
 
 ### Added

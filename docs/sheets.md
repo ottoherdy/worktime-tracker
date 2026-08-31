@@ -35,9 +35,13 @@ delay has passed (3 hours by default, so there is time to correct mistakes).
 
 ### Columns
 
+Written in this order:
+
 | Column | Example | Notes |
 |---|---|---|
 | Date | `2026-04-28` | ISO |
+| Week | `2026-W18` | ISO year and week |
+| Month | `2026-04` | |
 | Weekday | `Monday` | Full name |
 | Type | `Normal` | Or `Sick`, `Off`, `Flex`, … |
 | Arrival | `08:12` | HH:MM |
@@ -47,11 +51,28 @@ delay has passed (3 hours by default, so there is time to correct mistakes).
 | Hours | `8.43` | Exact float |
 | Hours (rounded) | `8.50h` | Rounded up to the nearest 15 min |
 | Overtime | `0.43` | Against the daily target |
+| Top-up type | `flex` | Empty unless part of the day was split off |
+| Top-up hours | `4` | |
 | Edited | `yes` | Set when the row came from `edit_day` |
 | Punch-out missing | `no` | `yes` when the 03:00 rollover closed the day with no departure |
 | Rev | `1` | Bumped each time the day changes |
 | Source | `auto` | Or `manual`, `edit`, `bulk` |
 | Updated at | `2026-04-28T16:41:09+02:00` | When the row was written |
+
+> **Give the sheet at least 20 columns.** That is 19 above plus one more:
+> Home Assistant's `google_sheets` integration stamps a `created` column onto
+> every row it appends, and it writes a header for any column it does not find.
+> If the grid stops at 19 there is nowhere to put it, and Google rejects the
+> whole write:
+>
+> ```
+> Range (Worktime!T1) exceeds grid limits. Max rows: 947, max columns: 19
+> ```
+>
+> Column T is the twentieth. Nothing is written at all — not a partial row.
+> A new Google Sheet is 26 columns wide by default, so this only bites a sheet
+> that was trimmed to fit the header row exactly. Right-click any column header
+> and insert a few spare ones; the extra empties are harmless.
 
 ### It appends, it does not overwrite
 
@@ -131,6 +152,26 @@ Worktime: google_sheets not installed — skipping export
 
 That means the Google Sheets integration is missing or the Config Entry ID is
 wrong. More symptoms in [Troubleshooting](troubleshooting.md).
+
+A rejection from Google now carries its own reason:
+
+```
+Worktime: Sheets append failed for 2026-08-05 (worksheet 'Worktime'):
+  {'code': 400, 'message': 'Range (Worktime!T1) exceeds grid limits.
+  Max rows: 947, max columns: 19', 'status': 'INVALID_ARGUMENT'}
+```
+
+`exceeds grid limits` means the worksheet is too narrow — see
+[Columns](#columns). A `403` is a permission or token problem, a `404` a wrong
+spreadsheet or worksheet name, and a `429` is quota, which resolves on its own.
+
+Once five days in a row fail the export stops rather than working through the
+rest, since a rejection of this kind applies to every remaining day equally:
+
+```
+Worktime: export_all aborted after 5 consecutive failures — the cause is
+structural, not per-day.
+```
 
 Every run also logs its own tally:
 
