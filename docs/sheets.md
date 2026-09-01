@@ -179,10 +179,14 @@ structural, not per-day.
 Every run also logs its own tally:
 
 ```
-Worktime: export_all done — sent=12 skipped=140 failed=0 total=152
+Worktime: export_all done — sent=12 skipped=140 failed=0 total=152,
+covering 2025-09-02..2026-09-01 (since=none, force=False).
+Stored locally: 140 history + 12 leave records.
 ```
 
-Read it as a diagnosis. `sent=0 skipped=N` with rows missing from the sheet means
+Read it as a diagnosis. The `covering` range is the first thing to check when a
+month is missing: if it stops before that month, the days are not in local
+storage and no export can send them. `sent=0 skipped=N` with rows missing from the sheet means
 the fingerprints are stale — force the resend. `failed=N` means Sheets rejected
 the rows, and the lines above it say why. A `total` far lower than the number of
 days you expect means the days are not in local storage at all, so there is

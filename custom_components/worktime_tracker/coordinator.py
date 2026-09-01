@@ -2053,6 +2053,7 @@ class WorktimeCoordinator(DataUpdateCoordinator):
             built = self._build_sheet_row(e)
             if built is None:
                 failed += 1
+                consecutive_failures += 1
                 continue
             row, fp, iso = built
             prev_fp = self.sheets_sync.get(iso, {}).get("fp")
@@ -2096,10 +2097,22 @@ class WorktimeCoordinator(DataUpdateCoordinator):
 
         if sent:
             await self._async_save()
+        # Say what the run actually had in hand. "total" alone cannot
+        # distinguish a day that was skipped from a day that was never in
+        # local storage to begin with, and that is the first fork in any
+        # "why is month X missing" question.
+        covered = (
+            f"{combined[0].get('date')}..{combined[-1].get('date')}"
+            if combined else "nothing"
+        )
         _LOGGER.info(
-            "Worktime: export_all %s — sent=%d skipped=%d failed=%d total=%d",
+            "Worktime: export_all %s — sent=%d skipped=%d failed=%d total=%d, "
+            "covering %s (since=%s, force=%s). Stored locally: %d history + "
+            "%d leave records.",
             "aborted" if aborted else "done",
-            sent, skipped, failed, len(combined),
+            sent, skipped, failed, len(combined), covered,
+            since.isoformat() if since else "none", force,
+            len(self.history), len(self.leave_records),
         )
         return {
             "sent": sent,

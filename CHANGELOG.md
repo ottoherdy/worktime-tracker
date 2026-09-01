@@ -6,6 +6,19 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 Entries before 2.1.0 predate this file and are not reconstructed.
 
+## [2.14.4] — 2026-09-01
+
+### Fixed
+- The `export_all` tally could not answer the question people actually bring to
+  it. `total=152` says how many days the run considered, but not which days, so
+  "month X is missing from the sheet" stayed ambiguous between a day that was
+  skipped, a day that failed, and a day that was never in local storage at all.
+  The line now prints the date range it covered, the `since` and `force` it ran
+  with, and the size of local storage.
+- An entry that could not be parsed into a row counted as a failure but did not
+  count toward the consecutive-failure abort, so a run could grind through a
+  whole year of them one warning at a time.
+
 ## [2.14.3] — 2026-08-31
 
 ### Fixed
