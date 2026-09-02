@@ -131,9 +131,11 @@ It skips days that are already there and unchanged, so it is safe to re-run. See
 ### From the card
 
 The footer's **Export to Sheets** link opens a dialog with the same two controls,
-so neither the range nor the resend needs a service call. It defaults to the
-first of the current month, which is the usual shape of the problem — this
-month's rows are missing, the rest of the sheet is fine.
+so neither the range nor the resend needs a service call. **This month**,
+**Last month** and **Everything** fill the from-date for you; it opens on the
+start of last month, which covers both the month that just closed and the one in
+progress. Watch that field — a from-date later than the month you are missing is
+the quiet way to export nothing useful, and the run will report success.
 
 Tick **Re-send days already marked as pushed** when the rows are missing from
 the sheet even though the integration thinks it sent them. That is the one case

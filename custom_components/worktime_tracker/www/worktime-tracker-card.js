@@ -1401,12 +1401,14 @@ class WorktimeTrackerCard extends HTMLElement {
   }
 
   _openExportModal() {
-    // Defaults to the start of the current month — the usual reason to
-    // open this is "the sheet is missing this month", not "re-send two
-    // years of history".
-    const now = new Date();
-    const first = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-    this._exportModal = { since: first, force: false };
+    // Starts at the beginning of last month, which covers both the month
+    // that just closed and the one in progress. Defaulting to the first
+    // of the *current* month silently excludes the month people most
+    // often open this dialog about.
+    this._exportModal = {
+      since: _dateToIso(_monthStartNMonthsBack(1)),
+      force: false,
+    };
     this._stateSig = "";
     this._render();
   }
@@ -1430,7 +1432,12 @@ class WorktimeTrackerCard extends HTMLElement {
           <div class="field">
             <label>From date</label>
             <input type="date" id="ex-since" value="${x.since}">
-            <div class="field-hint">Sends every known day on or after this date. Clear the field to cover everything stored locally.</div>
+            <div class="quick-ranges">
+              <button type="button" class="btn ghost" data-range="0">This month</button>
+              <button type="button" class="btn ghost" data-range="1">Last month</button>
+              <button type="button" class="btn ghost" data-range="all">Everything</button>
+            </div>
+            <div class="field-hint">Sends every known day on or after this date. An empty field covers everything stored locally.</div>
           </div>
 
           <div class="field">
@@ -1511,6 +1518,15 @@ class WorktimeTrackerCard extends HTMLElement {
     $("pd-save")?.addEventListener("click", () => this._submitPeriodModal());
     $("ex-cancel")?.addEventListener("click", () => this._closeExportModal());
     $("ex-save")?.addEventListener("click", () => this._submitExportModal());
+    for (const b of this.shadowRoot.querySelectorAll(".quick-ranges [data-range]")) {
+      b.addEventListener("click", () => {
+        const r = b.getAttribute("data-range");
+        // Writes the input directly rather than re-rendering — a
+        // re-render would rebuild the modal and drop the force tick.
+        const input = $("ex-since");
+        if (input) input.value = r === "all" ? "" : _dateToIso(_monthStartNMonthsBack(parseInt(r, 10)));
+      });
+    }
     if (this._periodModal) {
       $("modal-backdrop")?.addEventListener("click", (ev) => {
         if (ev.target.id === "modal-backdrop") this._closePeriodModal();
@@ -2021,6 +2037,10 @@ class WorktimeTrackerCard extends HTMLElement {
         color-scheme: light;
       }
       .theme-dark .lookup-controls input[type="date"] { color-scheme: dark; }
+      .quick-ranges {
+        display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px;
+      }
+      .quick-ranges .btn { height: 28px; padding: 0 10px; font-size: 12px; }
       .planned-tag {
         font-size: 11px; font-weight: 600; letter-spacing: .02em;
         padding: 1px 6px; border-radius: 999px; vertical-align: middle;

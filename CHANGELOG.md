@@ -6,6 +6,20 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 Entries before 2.1.0 predate this file and are not reconstructed.
 
+## [2.15.0] — 2026-09-02
+
+### Added
+- **This month** / **Last month** / **Everything** buttons in the export dialog,
+  so the from-date does not have to be typed correctly to get the range you
+  meant.
+
+### Changed
+- The export dialog opens on the start of *last* month rather than this one.
+  The old default silently excluded the month people most often open the dialog
+  about: a month closes, its rows never arrived, and an export started on the
+  first of the new month sends only the new month — reporting success while
+  changing nothing.
+
 ## [2.14.4] — 2026-09-01
 
 ### Fixed
